@@ -5,108 +5,206 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.Date;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/** Builds the picks for an audience from TMDB. Blocking: call off the main thread. */
+/**
+ * Builds the picks for an audience from TMDB. Each service gets {@link #PER_KIND} new titles (popular,
+ * released lately) and {@link #PER_KIND} classics (best rated), English only, above a quality bar.
+ * Blocking: call off the main thread.
+ */
 final class Tmdb {
 
-    static final int PER_SERVICE = 4;
+    static final int PER_KIND = 4;
     private static final String API = "https://api.themoviedb.org/3";
-    private static final int TRENDING_PAGES = 3;
-    /** TMDB's watch-provider ids (US) for the dock's services. */
+    /** TMDB's watch-provider ids (US), in the same order as the services they stand for. */
     private static final int[] PROVIDERS = {8, 337, 9};
     private static final Pick.Service[] PROVIDER_SERVICE = {Pick.Service.NETFLIX, Pick.Service.DISNEY, Pick.Service.PRIME};
     /** Kids, animation and family shows: discover has no rating filter for TV, the details check it instead. */
     private static final String KID_SHOW_GENRES = "10762|16|10751";
+    private static final String KID_MOVIE_GENRES = "16|10751";
+    /** Classics start here: older films rarely land with today's families. */
+    private static final String CLASSICS_SINCE = "1990-01-01";
+    private static final int MIN_KID_SHOW_VOTES = 30;
+    private static final long NEW_WINDOW_MS = 540L * 24 * 3600 * 1000;
+    private static final long JUST_OUT_MS = 90L * 24 * 3600 * 1000;
+    /** Quality bar: a title needs this rating from at least this many votes (fewer for what just came out). */
+    private static final double MIN_RATING = 6.5;
+    private static final int MIN_MOVIE_VOTES = 300;
+    private static final int MIN_SHOW_VOTES = 100;
+    private static final int MIN_JUST_OUT_VOTES = 25;
+    /** Shorts (Pixar's Piper, Paperman) aren't what anyone means by a movie night. */
+    private static final int MIN_RUNTIME = 40;
 
-    static List<Pick> fetchPicks(Audience audience, Watchmode links) throws IOException, JSONException {
-        Map<Pick.Service, List<Pick>> groups = new EnumMap<>(Pick.Service.class);
-        for (Pick.Service s : Pick.Service.values()) groups.put(s, new ArrayList<>());
+    private enum Kind { NEW, CLASSIC }
 
-        for (String candidate : candidates(audience)) {
-            if (allFull(groups)) break;
-            boolean series = candidate.startsWith("tv:");
-            Pick pick = details(series, Integer.parseInt(candidate.substring(candidate.indexOf(':') + 1)), audience);
-            if (pick == null) continue;
-            List<Pick> group = groups.get(pick.service);
-            if (group.size() < PER_SERVICE) group.add(pick);
+    static List<Pick> fetchPicks(Audience audience, Set<String> hidden, Watchmode links)
+            throws IOException, JSONException {
+        // Candidate lists, each feeding one kind of bucket; buckets are per (service, kind).
+        Map<String, List<String>> lists = new LinkedHashMap<>();
+        for (int i = 0; i < PROVIDERS.length; i++) {
+            String where = "&watch_region=" + Config.REGION + "&with_watch_providers=" + PROVIDERS[i];
+            lists.put(Kind.NEW + "/" + i, interleave(discoverNew(audience, where)));
+            lists.put(Kind.CLASSIC + "/" + i, interleave(discoverClassics(audience, where)));
+        }
+        // Stremio's titles are the ones none of the services carry: trending, and recent popular overall.
+        lists.put(Kind.NEW + "/stremio", interleave(trending(), discoverNew(audience, "")));
+        lists.put(Kind.CLASSIC + "/stremio", interleave(discoverClassics(audience, "")));
+
+        Map<String, List<Pick>> buckets = new LinkedHashMap<>();
+        for (Pick.Service s : Pick.Service.values()) {
+            for (Kind k : Kind.values()) buckets.put(s + "/" + k, new ArrayList<>());
         }
 
+        Set<String> seen = new HashSet<>(hidden);
+        boolean progress = true;
+        for (int round = 0; progress; round++) {
+            progress = false;
+            for (Map.Entry<String, List<String>> list : lists.entrySet()) {
+                if (round >= list.getValue().size()) continue;
+                progress = true;
+                String candidate = list.getValue().get(round);
+                if (!seen.add(candidate)) continue;
+                Kind kind = Kind.valueOf(list.getKey().substring(0, list.getKey().indexOf('/')));
+                if (!anyOpen(kind, buckets)) continue;
+                Pick pick = details(candidate, audience, kind);
+                if (pick == null) continue;
+                List<Pick> bucket = buckets.get(pick.service + "/" + kind);
+                if (bucket.size() < PER_KIND) bucket.add(pick);
+            }
+            if (allFull(buckets)) break;
+        }
+
+        // Per service: new and classic alternate, newest first.
         List<Pick> picks = new ArrayList<>();
-        for (List<Pick> group : groups.values()) {
-            for (Pick p : group) picks.add(p.service == Pick.Service.STREMIO ? p : p.withLink(links.link(p)));
+        for (Pick.Service s : Pick.Service.values()) {
+            List<Pick> fresh = buckets.get(s + "/" + Kind.NEW);
+            List<Pick> classic = buckets.get(s + "/" + Kind.CLASSIC);
+            for (int i = 0; i < Math.max(fresh.size(), classic.size()); i++) {
+                if (i < fresh.size()) picks.add(fresh.get(i));
+                if (i < classic.size()) picks.add(classic.get(i));
+            }
         }
-        return picks;
+        List<Pick> linked = new ArrayList<>();
+        for (Pick p : picks) linked.add(p.service == Pick.Service.STREMIO ? p : p.withLink(links.link(p)));
+        return linked;
     }
 
-    /**
-     * "movie:123" / "tv:456", most promising first. Adults get the week's trending titles; kids and
-     * family get each service's most popular titles in their ratings, then trending for Stremio.
-     */
-    private static Set<String> candidates(Audience audience) throws IOException, JSONException {
-        Set<String> out = new LinkedHashSet<>();
-        if (audience.discoverCertification != null) {
-            List<List<String>> perService = new ArrayList<>();
-            for (int provider : PROVIDERS) {
-                String where = "&watch_region=" + Config.REGION + "&with_watch_providers=" + provider
-                        + "&sort_by=popularity.desc&language=en-US";
-                List<String> ids = new ArrayList<>();
-                List<String> movies = ids("movie", get("/discover/movie?certification_country=US&certification="
-                        + audience.discoverCertification + where).getJSONArray("results"));
-                List<String> shows = ids("tv", get("/discover/tv?with_genres=" + KID_SHOW_GENRES + where)
-                        .getJSONArray("results"));
-                for (int i = 0; i < Math.max(movies.size(), shows.size()); i++) {
-                    if (i < movies.size()) ids.add(movies.get(i));
-                    if (i < shows.size()) ids.add(shows.get(i));
-                }
-                perService.add(ids);
-            }
-            // Round-robin across services, so each fills before the list runs long.
-            for (int i = 0; i < 40; i++) {
-                for (List<String> ids : perService) if (i < ids.size()) out.add(ids.get(i));
-            }
+    /** Any bucket of this kind still open? Cheap check before spending a details request. */
+    private static boolean anyOpen(Kind kind, Map<String, List<Pick>> buckets) {
+        for (Pick.Service s : Pick.Service.values()) {
+            if (buckets.get(s + "/" + kind).size() < PER_KIND) return true;
         }
-        for (int page = 1; page <= TRENDING_PAGES; page++) {
+        return false;
+    }
+
+    private static boolean allFull(Map<String, List<Pick>> buckets) {
+        for (List<Pick> b : buckets.values()) if (b.size() < PER_KIND) return false;
+        return true;
+    }
+
+    /** Popular titles released in the last ~18 months. */
+    private static List<List<String>> discoverNew(Audience audience, String where) throws IOException, JSONException {
+        String since = date(System.currentTimeMillis() - NEW_WINDOW_MS);
+        List<List<String>> out = new ArrayList<>();
+        out.add(ids("movie", get("/discover/movie?sort_by=popularity.desc&primary_release_date.gte=" + since
+                + movieFilters(audience) + where)));
+        out.add(ids("tv", get("/discover/tv?sort_by=popularity.desc&first_air_date.gte=" + since
+                + showFilters(audience) + where)));
+        return out;
+    }
+
+    /** The best-rated titles of all time, with enough votes to mean it. */
+    private static List<List<String>> discoverClassics(Audience audience, String where) throws IOException, JSONException {
+        List<List<String>> out = new ArrayList<>();
+        boolean kids = audience.discoverCertification != null;
+        out.add(ids("movie", get("/discover/movie?sort_by=vote_average.desc&vote_count.gte=1000"
+                + "&primary_release_date.gte=" + CLASSICS_SINCE + movieFilters(audience) + where)));
+        out.add(ids("tv", get("/discover/tv?sort_by=vote_average.desc&vote_count.gte=" + (kids ? 100 : 300)
+                + "&first_air_date.gte=" + CLASSICS_SINCE + showFilters(audience) + where)));
+        return out;
+    }
+
+    private static List<List<String>> trending() throws IOException, JSONException {
+        List<String> out = new ArrayList<>();
+        for (int page = 1; page <= 2; page++) {
             JSONArray results = get("/trending/all/week?language=en-US&page=" + page).getJSONArray("results");
             for (int i = 0; i < results.length(); i++) {
                 JSONObject r = results.getJSONObject(i);
                 String type = r.optString("media_type");
-                if (type.equals("movie") || type.equals("tv")) out.add(type + ":" + r.getInt("id"));
+                if ((type.equals("movie") || type.equals("tv")) && r.optString("original_language").equals("en")) {
+                    out.add(type + ":" + r.getInt("id"));
+                }
             }
         }
-        return out;
+        List<List<String>> wrapped = new ArrayList<>();
+        wrapped.add(out);
+        return wrapped;
     }
 
-    private static List<String> ids(String type, JSONArray results) throws JSONException {
+    private static String movieFilters(Audience audience) {
+        String f = "&language=en-US&with_original_language=en&with_runtime.gte=" + MIN_RUNTIME;
+        // "G" isn't "made for kids" (2001: A Space Odyssey is G): kids' movies are also animation or family.
+        return audience.discoverCertification == null ? f
+                : f + "&certification_country=US&certification=" + audience.discoverCertification
+                        + "&with_genres=" + KID_MOVIE_GENRES;
+    }
+
+    private static String showFilters(Audience audience) {
+        String f = "&language=en-US&with_original_language=en";
+        return audience.discoverCertification == null ? f : f + "&with_genres=" + KID_SHOW_GENRES;
+    }
+
+    @SafeVarargs
+    private static List<String> interleave(List<List<String>>... groups) {
+        List<List<String>> all = new ArrayList<>();
+        for (List<List<String>> g : groups) all.addAll(g);
+        List<String> out = new ArrayList<>();
+        for (int i = 0; ; i++) {
+            boolean any = false;
+            for (List<String> l : all) {
+                if (i < l.size()) {
+                    out.add(l.get(i));
+                    any = true;
+                }
+            }
+            if (!any) return out;
+        }
+    }
+
+    private static List<String> ids(String type, JSONObject page) throws JSONException {
+        JSONArray results = page.getJSONArray("results");
         List<String> out = new ArrayList<>();
         for (int i = 0; i < results.length(); i++) out.add(type + ":" + results.getJSONObject(i).getInt("id"));
         return out;
     }
 
-    private static boolean allFull(Map<Pick.Service, List<Pick>> groups) {
-        for (List<Pick> g : groups.values()) if (g.size() < PER_SERVICE) return false;
-        return true;
-    }
-
     /**
-     * Null when the title is skipped: not for this audience, no backdrop, or nowhere to open it
-     * (no dock service and no IMDb id for Stremio).
+     * Null when the title is skipped: not for this audience, below the quality bar, a short, no backdrop,
+     * or nowhere to open it (no dock service and no IMDb id for Stremio).
      */
-    private static Pick details(boolean series, int id, Audience audience) throws IOException, JSONException {
+    private static Pick details(String candidate, Audience audience, Kind kind) throws IOException, JSONException {
+        boolean series = candidate.startsWith("tv:");
+        int id = Integer.parseInt(candidate.substring(candidate.indexOf(':') + 1));
         JSONObject d = get("/" + (series ? "tv" : "movie") + "/" + id
                 + "?language=en-US&append_to_response=watch/providers,external_ids,images,"
                 + (series ? "content_ratings" : "release_dates") + "&include_image_language=en,null");
         if (d.isNull("backdrop_path")) return null;
-        if (!audience.allows(series, rating(series, d), genreIds(d))) return null;
+        if (!d.optString("original_language").equals("en")) return null;
+        if (!series && d.optInt("runtime") < MIN_RUNTIME) return null;
+        Set<Integer> genres = genreIds(d);
+        if (!goodEnough(series, d, genres)) return null;
+        if (!audience.allows(series, rating(series, d), genres)) return null;
 
         String imdb = series ? d.getJSONObject("external_ids").optString("imdb_id") : d.optString("imdb_id");
         if (imdb.equals("null")) imdb = "";
@@ -116,8 +214,8 @@ final class Tmdb {
         JSONObject region = d.getJSONObject("watch/providers").getJSONObject("results").optJSONObject(Config.REGION);
         if (region != null) {
             List<String> names = new ArrayList<>();
-            for (String kind : new String[] {"flatrate", "ads", "free"}) {
-                JSONArray list = region.optJSONArray(kind);
+            for (String k : new String[] {"flatrate", "ads", "free"}) {
+                JSONArray list = region.optJSONArray(k);
                 for (int i = 0; list != null && i < list.length(); i++) {
                     names.add(list.getJSONObject(i).getString("provider_name"));
                 }
@@ -130,6 +228,17 @@ final class Tmdb {
         String title = d.optString(series ? "name" : "title");
         return new Pick(series, id, title, meta(series, d), d.optString("overview"),
                 d.getString("backdrop_path"), logo(d), imdb, service, elsewhere, "");
+    }
+
+    private static boolean goodEnough(boolean series, JSONObject d, Set<Integer> genres) {
+        String date = d.optString(series ? "first_air_date" : "release_date");
+        boolean justOut = date.length() == 10
+                && date.compareTo(date(System.currentTimeMillis() - JUST_OUT_MS)) >= 0;
+        // Fewer people rate preschool shows: Bluey-type titles would never reach the usual bar.
+        int minVotes = justOut ? MIN_JUST_OUT_VOTES
+                : !series ? MIN_MOVIE_VOTES
+                : genres.contains(Audience.KIDS_GENRE) ? MIN_KID_SHOW_VOTES : MIN_SHOW_VOTES;
+        return d.optDouble("vote_average") >= MIN_RATING && d.optInt("vote_count") >= minVotes;
     }
 
     /** The US rating, or "" when TMDB has none. */
@@ -202,6 +311,10 @@ final class Tmdb {
             }
         }
         return "";
+    }
+
+    private static String date(long ms) {
+        return new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date(ms));
     }
 
     static byte[] download(String url, boolean authorized) throws IOException {

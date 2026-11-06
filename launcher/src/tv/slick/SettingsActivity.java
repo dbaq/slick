@@ -54,6 +54,7 @@ public class SettingsActivity extends Activity {
                 d -> prefs.setEveningEnd(wrap(prefs.eveningEnd() + d * HALF_HOUR)));
         choice("Picks change every", () -> prefs.rotateSeconds() == 0 ? "Off" : prefs.rotateSeconds() + " seconds",
                 d -> prefs.setRotateSeconds(nextRotation(prefs.rotateSeconds(), d)));
+        hiddenRow();
         note("Kids: G movies, TV-Y and TV-G shows. Family: up to PG and TV-PG. "
                 + "Adults: every rating, without titles made for little kids.");
 
@@ -100,6 +101,23 @@ public class SettingsActivity extends Activity {
         });
         row.setOnClickListener(view -> {
             change.accept(1);
+            refresh.run();
+        });
+        focusStyle(row, v);
+    }
+
+    /** Titles hidden with "Hold OK"; OK brings them all back. */
+    private void hiddenRow() {
+        LinearLayout row = row("Hidden titles");
+        TextView v = Ui.text(this, "", 17, Ui.REGULAR, 0x99FFFFFF);
+        Runnable refresh = () -> {
+            int n = prefs.hidden().size();
+            v.setText(n == 0 ? "None" : n + "  ·  OK shows them again");
+        };
+        refresh.run();
+        row.addView(v);
+        row.setOnClickListener(view -> {
+            prefs.clearHidden();
             refresh.run();
         });
         focusStyle(row, v);

@@ -33,11 +33,13 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextClock;
 import android.widget.TextView;
+import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Apple TV-style home. The backdrop shows what's trending on the focused dock app (the "top shelf");
@@ -51,6 +53,7 @@ public class HomeActivity extends Activity {
     /** How far the dock (and the pick above it) slide down in hero mode, leaving the dock peeking. */
     private static final int HERO_DROP = 124;
     private static final long THEME_CHECK_MS = 60_000;
+    private static final int DOTS = 7;
 
     private static final Typeface THIN = Typeface.create("sans-serif-thin", Typeface.NORMAL);
     private static final Typeface LIGHT = Typeface.create("sans-serif-light", Typeface.NORMAL);
@@ -89,6 +92,7 @@ public class HomeActivity extends Activity {
     private LinearLayout play;
     /** "Watch on Netflix": where OK takes the focused pick. */
     private TextView playLabel;
+    /** Pill pagination under the button: where Left/Right are in the picks. */
     private LinearLayout dots;
 
     private View wifiButton;
@@ -133,7 +137,7 @@ public class HomeActivity extends Activity {
 
     private void loadPicks(boolean deliverCached) {
         Audience forAudience = audience;
-        store.load(forAudience, fresh -> {
+        store.load(forAudience, prefs.hidden(), fresh -> {
             if (forAudience == audience) onPicks(fresh);
         }, deliverCached);
     }
@@ -180,8 +184,11 @@ public class HomeActivity extends Activity {
 
     private void onPicks(List<Pick> fresh) {
         // Each TV has its own apps: a pick for a service this one doesn't have can't be played here.
+        Set<String> hidden = prefs.hidden();
         picks = new ArrayList<>();
-        for (Pick p : fresh) if (launchIntent(p.service.pkg) != null) picks.add(p);
+        for (Pick p : fresh) {
+            if (launchIntent(p.service.pkg) != null && !hidden.contains(Prefs.key(p))) picks.add(p);
+        }
         byService.clear();
         for (Pick p : picks) {
             List<Pick> group = byService.get(p.service);
@@ -324,11 +331,18 @@ public class HomeActivity extends Activity {
         onTileFocused(lastTile);
     }
 
+    /**
+     * At most {@link #DOTS} dots, a window that follows the current pick: it is a pill, its neighbours dots,
+     * and the dots at a window edge with more picks beyond it shrink, hinting the list goes on.
+     */
     private void updateDots() {
         if (!hero) return;
-        if (dots.getChildCount() != showing.size()) {
+        int n = showing.size();
+        int shown = Math.min(DOTS, n);
+        int first = Math.max(0, Math.min(index - shown / 2, n - shown));
+        if (dots.getChildCount() != shown) {
             dots.removeAllViews();
-            for (int i = 0; i < showing.size(); i++) {
+            for (int i = 0; i < shown; i++) {
                 View d = new View(this);
                 GradientDrawable g = new GradientDrawable();
                 g.setCornerRadius(dp(3));
@@ -336,12 +350,32 @@ public class HomeActivity extends Activity {
                 dots.addView(d, linear(6, 6, i == 0 ? 0 : 6, 0, 0, 0));
             }
         }
-        for (int i = 0; i < dots.getChildCount(); i++) {
+        for (int i = 0; i < shown; i++) {
+            int at = first + i;
+            boolean edge = (i == 0 && first > 0) || (i == shown - 1 && at < n - 1);
             View d = dots.getChildAt(i);
-            ((GradientDrawable) d.getBackground()).setColor(i == index ? Color.WHITE : 0x66FFFFFF);
-            d.getLayoutParams().width = dp(i == index ? 18 : 6);
+            ((GradientDrawable) d.getBackground()).setColor(at == index ? 0xE6FFFFFF : 0x59FFFFFF);
+            int size = edge ? 4 : 6;
+            d.getLayoutParams().width = dp(at == index ? 18 : size);
+            d.getLayoutParams().height = dp(at == index ? 6 : size);
             d.requestLayout();
         }
+    }
+
+    /** "Not interested": the pick goes away on this TV for good (Settings can bring hidden titles back). */
+    private void hide(Pick p) {
+        prefs.hide(p);
+        Toast.makeText(this, "Hidden: " + p.title, Toast.LENGTH_SHORT).show();
+        picks.remove(p);
+        List<Pick> group = byService.get(p.service);
+        if (group != null) group.remove(p);
+        if (picks.isEmpty()) {
+            lastTile.requestFocus();
+            return;
+        }
+        index = Math.min(index, picks.size() - 1);
+        current = null;
+        show(picks.get(index));
     }
 
     // ---- Backdrop ----------------------------------------------------------------------------------
@@ -541,7 +575,7 @@ public class HomeActivity extends Activity {
         playBg.setCornerRadius(dp(20));
         playBg.setColor(0x12FFFFFF);
         play.setBackground(playBg);
-        playLabel = text("", 15, MEDIUM, Color.WHITE);
+        playLabel = text("", 15, MEDIUM, 0xD9FFFFFF);
         play.addView(playLabel);
         play.setOnFocusChangeListener((v, focused) -> {
             playBg.setColor(focused ? 0x1FFFFFFF : 0x12FFFFFF);
@@ -562,6 +596,10 @@ public class HomeActivity extends Activity {
         });
         play.setOnClickListener(v -> {
             if (current != null) open(current);
+        });
+        play.setOnLongClickListener(v -> {
+            if (current != null) hide(current);
+            return true;
         });
         LinearLayout playRow = new LinearLayout(this);
         playRow.setClipChildren(false);

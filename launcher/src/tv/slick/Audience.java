@@ -12,7 +12,7 @@ enum Audience {
     ADULTS("Adults", null, null, null);
 
     private static final int FAMILY_GENRE = 10751;
-    private static final int KIDS_GENRE = 10762;
+    static final int KIDS_GENRE = 10762;
 
     final String label;
     private final Set<String> movieRatings;
@@ -35,6 +35,8 @@ enum Audience {
                     : genres.contains(FAMILY_GENRE) || rating.equals("G");
             return !forLittleKids;
         }
+        // Many kids' shows carry no US rating on TMDB; its Kids genre is the next best signal.
+        if (series && rating.isEmpty()) return genres.contains(KIDS_GENRE);
         return (series ? showRatings : movieRatings).contains(rating);
     }
 

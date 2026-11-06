@@ -5,7 +5,9 @@ import android.content.SharedPreferences;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /** This TV's own choices, set in Slick Settings. */
 final class Prefs {
@@ -29,6 +31,25 @@ final class Prefs {
 
     void setDock(List<String> packages) {
         p.edit().putString("dock", String.join(",", packages)).apply();
+    }
+
+    /** Titles hidden with a long press ("movie:123", "tv:456"): never picked again on this TV. */
+    Set<String> hidden() {
+        return new HashSet<>(p.getStringSet("hidden", new HashSet<>()));
+    }
+
+    void hide(Pick pick) {
+        Set<String> h = hidden();
+        h.add(key(pick));
+        p.edit().putStringSet("hidden", h).apply();
+    }
+
+    void clearHidden() {
+        p.edit().remove("hidden").apply();
+    }
+
+    static String key(Pick pick) {
+        return (pick.series ? "tv:" : "movie:") + pick.tmdbId;
     }
 
     /** How long each pick shows before the next; 0 = they don't rotate. */
