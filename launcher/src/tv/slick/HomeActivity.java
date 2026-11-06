@@ -539,12 +539,12 @@ public class HomeActivity extends Activity {
         // Discreet frosted glass: the title is the star, the button just says where OK goes.
         GradientDrawable playBg = new GradientDrawable();
         playBg.setCornerRadius(dp(20));
-        playBg.setColor(0x26FFFFFF);
+        playBg.setColor(0x1AFFFFFF);
         play.setBackground(playBg);
         playLabel = text("", 15, MEDIUM, Color.WHITE);
         play.addView(playLabel);
         play.setOnFocusChangeListener((v, focused) -> {
-            playBg.setColor(focused ? 0x40FFFFFF : 0x26FFFFFF);
+            playBg.setColor(focused ? 0x2EFFFFFF : 0x1AFFFFFF);
             if (focused && !hero) enterHero();
             if (!focused && hero) exitHero();
             v.animate().scaleX(focused ? 1.04f : 1f).scaleY(focused ? 1.04f : 1f)
