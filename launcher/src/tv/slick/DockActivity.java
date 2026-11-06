@@ -22,15 +22,20 @@ import java.util.List;
 import java.util.TreeMap;
 
 /**
- * Which installed apps sit on the dock, in which order. OK adds or removes an app; Left/Right moves
- * an app on the dock earlier or later.
+ * Which installed apps sit on the dock (up to {@link #MAX}), in which order. OK adds or removes an app;
+ * Left/Right moves an app on the dock earlier or later.
  */
 public class DockActivity extends Activity {
+
+    /** What fits across the screen at the dock's tile size. */
+    static final int MAX = 6;
+    private static final String HINT = "OK adds or removes an app (up to " + MAX + ").  ‹ ›  moves it along the dock.";
 
     private Prefs prefs;
     private List<String> dock;
     private final TreeMap<String, String> others = new TreeMap<>();
     private LinearLayout list;
+    private TextView hint;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -51,8 +56,7 @@ public class DockActivity extends Activity {
         page.setBackgroundColor(0xFF0B0B0F);
         page.setPadding(dp(120), dp(48), dp(120), dp(24));
         page.addView(SettingsActivity.Ui.text(this, "Apps on the dock", 34, SettingsActivity.Ui.MEDIUM, Color.WHITE));
-        TextView hint = SettingsActivity.Ui.text(this, "OK adds or removes an app.  ‹ ›  moves it along the dock.",
-                14, SettingsActivity.Ui.REGULAR, 0x80FFFFFF);
+        hint = SettingsActivity.Ui.text(this, HINT, 14, SettingsActivity.Ui.REGULAR, 0x80FFFFFF);
         hint.setPadding(0, dp(8), 0, dp(16));
         page.addView(hint);
         list = new LinearLayout(this);
@@ -150,9 +154,16 @@ public class DockActivity extends Activity {
             dock.remove(pkg);
             others.put(name, pkg);
         } else {
+            if (dock.size() == MAX) {
+                hint.setText("The dock holds " + MAX + " apps. Remove one first, then add " + name + ".");
+                hint.setTextColor(0xFFFBBF24);
+                return;
+            }
             dock.add(pkg);
             others.values().remove(pkg);
         }
+        hint.setText(HINT);
+        hint.setTextColor(0x80FFFFFF);
         save(pkg);
     }
 
