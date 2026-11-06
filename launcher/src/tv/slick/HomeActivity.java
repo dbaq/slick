@@ -69,6 +69,9 @@ public class HomeActivity extends Activity {
     private Prefs prefs;
     /** Who the picks are for right now: follows the Settings schedule. */
     private Audience audience;
+    /** The holiday season now (null outside one, or when Settings turns seasonal picks off). */
+    private Season season;
+    private boolean holidayDay;
     private List<String> dockApps;
     private List<Pick> picks = new ArrayList<>();
     private final Map<Pick.Service, List<Pick>> byService = new EnumMap<>(Pick.Service.class);
@@ -112,7 +115,10 @@ public class HomeActivity extends Activity {
         super.onCreate(state);
         store = new PickStore(this);
         prefs = new Prefs(this);
-        audience = prefs.audienceAt(System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        audience = prefs.audienceAt(now);
+        season = prefs.seasonal() ? Season.at(now) : null;
+        holidayDay = season != null && season.isFullDay(now);
         dockApps = prefs.dock();
 
         root = new FrameLayout(this);
@@ -137,8 +143,10 @@ public class HomeActivity extends Activity {
 
     private void loadPicks(boolean deliverCached) {
         Audience forAudience = audience;
-        store.load(forAudience, prefs.hidden(), fresh -> {
-            if (forAudience == audience) onPicks(fresh);
+        Season forSeason = season;
+        boolean forDay = holidayDay;
+        store.load(forAudience, forSeason, forDay, prefs.hidden(), fresh -> {
+            if (forAudience == audience && forSeason == season && forDay == holidayDay) onPicks(fresh);
         }, deliverCached);
     }
 
@@ -281,8 +289,9 @@ public class HomeActivity extends Activity {
             playLabel.setText((p.service == Pick.Service.STREMIO ? "Watch in " : "Watch on ") + p.service.label);
             overviewText.setText(p.overview);
         } else {
+            String kind = p.holiday && season != null ? season.label + " pick" : "Trending";
             metaText.setText(p.service == Pick.Service.STREMIO
-                    ? "Trending · " + p.where() : "Trending on " + p.service.label);
+                    ? kind + " · " + p.where() : kind + " on " + p.service.label);
         }
     }
 
@@ -412,8 +421,12 @@ public class HomeActivity extends Activity {
                 : theme == Prefs.Theme.LIGHT;
         if (day == null || day != isDay) applyTheme(isDay);
         Audience scheduled = prefs.audienceAt(now);
-        if (scheduled != audience) {
+        Season inSeason = prefs.seasonal() ? Season.at(now) : null;
+        boolean fullDay = inSeason != null && inSeason.isFullDay(now);
+        if (scheduled != audience || inSeason != season || fullDay != holidayDay) {
             audience = scheduled;
+            season = inSeason;
+            holidayDay = fullDay;
             loadPicks(true);
         }
         paintGlass(glassButtons.indexOf(wifiButton));

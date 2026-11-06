@@ -19,13 +19,13 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * Builds the picks for an audience from TMDB. Each service gets {@link #PER_KIND} new titles (popular,
- * released lately) and {@link #PER_KIND} classics (best rated), English only, above a quality bar.
- * Blocking: call off the main thread.
+ * Builds the picks for an audience from TMDB. Each service gets new titles (popular, released lately) and
+ * classics (best rated), English only, above a quality bar; in a {@link Season}, half are holiday titles,
+ * and on the day itself all of them. Blocking: call off the main thread.
  */
 final class Tmdb {
 
-    static final int PER_KIND = 4;
+    static final int PER_SERVICE = 8;
     private static final String API = "https://api.themoviedb.org/3";
     /** TMDB's watch-provider ids (US), in the same order as the services they stand for. */
     private static final int[] PROVIDERS = {8, 337, 9};
@@ -46,20 +46,33 @@ final class Tmdb {
     /** Shorts (Pixar's Piper, Paperman) aren't what anyone means by a movie night. */
     private static final int MIN_RUNTIME = 40;
 
-    private enum Kind { NEW, CLASSIC }
+    private enum Kind { HOLIDAY, NEW, CLASSIC }
 
-    static List<Pick> fetchPicks(Audience audience, Set<String> hidden, Watchmode links)
-            throws IOException, JSONException {
+    /** {@code season} is null outside the holidays; {@code fullDay} makes every pick a holiday pick. */
+    static List<Pick> fetchPicks(Audience audience, Season season, boolean fullDay, Set<String> hidden,
+            Watchmode links) throws IOException, JSONException {
+        Map<Kind, Integer> capacity = new java.util.EnumMap<>(Kind.class);
+        int holiday = season == null ? 0 : fullDay ? PER_SERVICE : PER_SERVICE / 2;
+        capacity.put(Kind.HOLIDAY, holiday);
+        capacity.put(Kind.NEW, (PER_SERVICE - holiday) / 2);
+        capacity.put(Kind.CLASSIC, (PER_SERVICE - holiday) / 2);
+
         // Candidate lists, each feeding one kind of bucket; buckets are per (service, kind).
         Map<String, List<String>> lists = new LinkedHashMap<>();
         for (int i = 0; i < PROVIDERS.length; i++) {
             String where = "&watch_region=" + Config.REGION + "&with_watch_providers=" + PROVIDERS[i];
-            lists.put(Kind.NEW + "/" + i, interleave(discoverNew(audience, where)));
-            lists.put(Kind.CLASSIC + "/" + i, interleave(discoverClassics(audience, where)));
+            if (holiday > 0) lists.put(Kind.HOLIDAY + "/" + i, interleave(discoverHoliday(audience, season, where)));
+            if (holiday < PER_SERVICE) {
+                lists.put(Kind.NEW + "/" + i, interleave(discoverNew(audience, where)));
+                lists.put(Kind.CLASSIC + "/" + i, interleave(discoverClassics(audience, where)));
+            }
         }
         // Stremio's titles are the ones none of the services carry: trending, and recent popular overall.
-        lists.put(Kind.NEW + "/stremio", interleave(trending(), discoverNew(audience, "")));
-        lists.put(Kind.CLASSIC + "/stremio", interleave(discoverClassics(audience, "")));
+        if (holiday > 0) lists.put(Kind.HOLIDAY + "/stremio", interleave(discoverHoliday(audience, season, "")));
+        if (holiday < PER_SERVICE) {
+            lists.put(Kind.NEW + "/stremio", interleave(trending(), discoverNew(audience, "")));
+            lists.put(Kind.CLASSIC + "/stremio", interleave(discoverClassics(audience, "")));
+        }
 
         Map<String, List<Pick>> buckets = new LinkedHashMap<>();
         for (Pick.Service s : Pick.Service.values()) {
@@ -76,23 +89,23 @@ final class Tmdb {
                 String candidate = list.getValue().get(round);
                 if (!seen.add(candidate)) continue;
                 Kind kind = Kind.valueOf(list.getKey().substring(0, list.getKey().indexOf('/')));
-                if (!anyOpen(kind, buckets)) continue;
+                if (!anyOpen(kind, capacity, buckets)) continue;
                 Pick pick = details(candidate, audience, kind);
                 if (pick == null) continue;
                 List<Pick> bucket = buckets.get(pick.service + "/" + kind);
-                if (bucket.size() < PER_KIND) bucket.add(pick);
+                if (bucket.size() < capacity.get(kind)) bucket.add(kind == Kind.HOLIDAY ? pick.asHoliday() : pick);
             }
-            if (allFull(buckets)) break;
+            if (allFull(capacity, buckets)) break;
         }
 
-        // Per service: new and classic alternate, newest first.
+        // Per service: holiday, new and classic take turns.
         List<Pick> picks = new ArrayList<>();
         for (Pick.Service s : Pick.Service.values()) {
-            List<Pick> fresh = buckets.get(s + "/" + Kind.NEW);
-            List<Pick> classic = buckets.get(s + "/" + Kind.CLASSIC);
-            for (int i = 0; i < Math.max(fresh.size(), classic.size()); i++) {
-                if (i < fresh.size()) picks.add(fresh.get(i));
-                if (i < classic.size()) picks.add(classic.get(i));
+            for (int i = 0; i < PER_SERVICE; i++) {
+                for (Kind k : Kind.values()) {
+                    List<Pick> b = buckets.get(s + "/" + k);
+                    if (i < b.size()) picks.add(b.get(i));
+                }
             }
         }
         List<Pick> linked = new ArrayList<>();
@@ -101,16 +114,28 @@ final class Tmdb {
     }
 
     /** Any bucket of this kind still open? Cheap check before spending a details request. */
-    private static boolean anyOpen(Kind kind, Map<String, List<Pick>> buckets) {
+    private static boolean anyOpen(Kind kind, Map<Kind, Integer> capacity, Map<String, List<Pick>> buckets) {
         for (Pick.Service s : Pick.Service.values()) {
-            if (buckets.get(s + "/" + kind).size() < PER_KIND) return true;
+            if (buckets.get(s + "/" + kind).size() < capacity.get(kind)) return true;
         }
         return false;
     }
 
-    private static boolean allFull(Map<String, List<Pick>> buckets) {
-        for (List<Pick> b : buckets.values()) if (b.size() < PER_KIND) return false;
+    private static boolean allFull(Map<Kind, Integer> capacity, Map<String, List<Pick>> buckets) {
+        for (Pick.Service s : Pick.Service.values()) {
+            for (Kind k : Kind.values()) if (buckets.get(s + "/" + k).size() < capacity.get(k)) return false;
+        }
         return true;
+    }
+
+    /** Popular titles tagged with the season's keywords: holiday viewing is mostly the favourites. */
+    private static List<List<String>> discoverHoliday(Audience audience, Season season, String where)
+            throws IOException, JSONException {
+        String tagged = "&with_keywords=" + season.keywords + "&sort_by=popularity.desc";
+        List<List<String>> out = new ArrayList<>();
+        out.add(ids("movie", get("/discover/movie?vote_count.gte=100" + tagged + movieFilters(audience) + where)));
+        out.add(ids("tv", get("/discover/tv?vote_count.gte=20" + tagged + showFilters(audience) + where)));
+        return out;
     }
 
     /** Popular titles released in the last ~18 months. */
@@ -227,7 +252,7 @@ final class Tmdb {
 
         String title = d.optString(series ? "name" : "title");
         return new Pick(series, id, title, meta(series, d), d.optString("overview"),
-                d.getString("backdrop_path"), logo(d), imdb, service, elsewhere, "");
+                d.getString("backdrop_path"), logo(d), imdb, service, elsewhere, "", false);
     }
 
     private static boolean goodEnough(boolean series, JSONObject d, Set<Integer> genres) {

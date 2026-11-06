@@ -40,9 +40,11 @@ final class Pick {
     final String elsewhere;
     /** The title's page in its app (from Watchmode), or "" to open the app's home. */
     final String link;
+    /** One of the season's picks (Christmas, Halloween). */
+    final boolean holiday;
 
     Pick(boolean series, int tmdbId, String title, String meta, String overview, String backdrop, String logo,
-            String imdbId, Service service, String elsewhere, String link) {
+            String imdbId, Service service, String elsewhere, String link, boolean holiday) {
         this.series = series;
         this.tmdbId = tmdbId;
         this.title = title;
@@ -54,10 +56,15 @@ final class Pick {
         this.service = service;
         this.elsewhere = elsewhere;
         this.link = link;
+        this.holiday = holiday;
     }
 
     Pick withLink(String link) {
-        return new Pick(series, tmdbId, title, meta, overview, backdrop, logo, imdbId, service, elsewhere, link);
+        return new Pick(series, tmdbId, title, meta, overview, backdrop, logo, imdbId, service, elsewhere, link, holiday);
+    }
+
+    Pick asHoliday() {
+        return new Pick(series, tmdbId, title, meta, overview, backdrop, logo, imdbId, service, elsewhere, link, true);
     }
 
     String where() {
@@ -69,12 +76,14 @@ final class Pick {
         return new JSONObject()
                 .put("series", series).put("tmdb", tmdbId).put("title", title).put("meta", meta).put("overview", overview)
                 .put("backdrop", backdrop).put("logo", logo).put("imdb", imdbId)
-                .put("service", service.name()).put("elsewhere", elsewhere).put("link", link);
+                .put("service", service.name()).put("elsewhere", elsewhere).put("link", link)
+                .put("holiday", holiday);
     }
 
     static Pick fromJson(JSONObject o) throws JSONException {
         return new Pick(o.getBoolean("series"), o.getInt("tmdb"), o.getString("title"), o.getString("meta"),
                 o.getString("overview"), o.getString("backdrop"), o.getString("logo"), o.getString("imdb"),
-                Service.valueOf(o.getString("service")), o.getString("elsewhere"), o.getString("link"));
+                Service.valueOf(o.getString("service")), o.getString("elsewhere"), o.getString("link"),
+                o.getBoolean("holiday"));
     }
 }

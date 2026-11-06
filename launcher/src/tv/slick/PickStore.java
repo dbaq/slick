@@ -57,14 +57,16 @@ final class PickStore {
     }
 
     /** Delivers the cached picks (when asked to), then fresh ones when the cache is older than an hour. */
-    void load(Audience audience, Set<String> hidden, Listener listener, boolean deliverCached) {
-        File listFile = new File(filesDir, "picks-v3-" + audience.name().toLowerCase() + ".json");
+    void load(Audience audience, Season season, boolean holidayDay, Set<String> hidden, Listener listener,
+            boolean deliverCached) {
+        String when = season == null ? "" : "-" + season.name() + (holidayDay ? "-day" : "");
+        File listFile = new File(filesDir, ("picks-v4-" + audience.name() + when + ".json").toLowerCase());
         network.execute(() -> {
             List<Pick> cached = readList(listFile);
             if (deliverCached && !cached.isEmpty()) main.post(() -> listener.onPicks(cached));
             if (!cached.isEmpty() && System.currentTimeMillis() - listFile.lastModified() < MAX_AGE_MS) return;
             try {
-                List<Pick> fresh = Tmdb.fetchPicks(audience, hidden, new Watchmode(new File(filesDir, "links.json")));
+                List<Pick> fresh = Tmdb.fetchPicks(audience, season, holidayDay, hidden, new Watchmode(new File(filesDir, "links.json")));
                 for (Pick p : fresh) {
                     fetchToDisk(backdropUrl(p));
                     if (!p.logo.isEmpty()) fetchToDisk(logoUrl(p));

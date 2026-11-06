@@ -54,9 +54,12 @@ public class SettingsActivity extends Activity {
                 d -> prefs.setEveningEnd(wrap(prefs.eveningEnd() + d * HALF_HOUR)));
         choice("Picks change every", () -> prefs.rotateSeconds() == 0 ? "Off" : prefs.rotateSeconds() + " seconds",
                 d -> prefs.setRotateSeconds(nextRotation(prefs.rotateSeconds(), d)));
+        choice("Seasonal picks", () -> prefs.seasonal() ? "On" : "Off",
+                d -> prefs.setSeasonal(!prefs.seasonal()));
         hiddenRow();
         note("Kids: G movies, TV-Y and TV-G shows. Family: up to PG and TV-PG. "
-                + "Adults: every rating, without titles made for little kids.");
+                + "Adults: every rating, without titles made for little kids. "
+                + "Seasonal: Halloween and Christmas picks for the " + Season.LEAD_DAYS + " days before each.");
 
         section("Look");
         choice("Theme", () -> label(prefs.theme()), d -> prefs.setTheme(next(prefs.theme(), d)));

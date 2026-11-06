@@ -33,6 +33,15 @@ final class Prefs {
         p.edit().putString("dock", String.join(",", packages)).apply();
     }
 
+    /** Christmas and Halloween picks in their season (see {@link Season}). */
+    boolean seasonal() {
+        return p.getBoolean("seasonal", true);
+    }
+
+    void setSeasonal(boolean on) {
+        p.edit().putBoolean("seasonal", on).apply();
+    }
+
     /** Titles hidden with a long press ("movie:123", "tv:456"): never picked again on this TV. */
     Set<String> hidden() {
         return new HashSet<>(p.getStringSet("hidden", new HashSet<>()));
