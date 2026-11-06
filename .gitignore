@@ -1,0 +1,13 @@
+# Only the launcher and the debloat lists/scripts are published.
+/*
+!/.gitignore
+!/README.md
+!/launcher/
+!/debloat/
+/debloat/*
+!/debloat/1-ads.txt
+!/debloat/2-alexa.txt
+!/debloat/3-support.txt
+!/debloat/4-apps.txt
+!/debloat/apply.sh
+!/debloat/verify.sh

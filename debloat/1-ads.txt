@@ -1,0 +1,16 @@
+com.amazon.kso.blackbird
+com.amazon.sneakpeek
+com.amazon.hybridadidservice
+com.amazon.media.recommendations
+com.amazon.providers.contentsupport
+com.amazon.tv.easyupgrade
+com.amazon.shoptv.client
+com.amazon.shoptv.firetv.client
+com.amazon.hedwig
+com.amazon.franktvinput
+com.amazon.tifobserver
+com.amazon.systemnotices
+com.amazon.uxnotification
+com.amazon.tv.releasenotes
+com.amazon.tv.earlyaccess
+com.amazon.gamehub
