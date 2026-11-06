@@ -52,6 +52,8 @@ public class SettingsActivity extends Activity {
                 d -> prefs.setEveningStart(wrap(prefs.eveningStart() + d * HALF_HOUR)));
         choice("Evening ends", () -> Prefs.clock(prefs.eveningEnd()),
                 d -> prefs.setEveningEnd(wrap(prefs.eveningEnd() + d * HALF_HOUR)));
+        choice("Picks change every", () -> prefs.rotateSeconds() == 0 ? "Off" : prefs.rotateSeconds() + " seconds",
+                d -> prefs.setRotateSeconds(nextRotation(prefs.rotateSeconds(), d)));
         note("Kids: G movies, TV-Y and TV-G shows. Family: up to PG and TV-PG. "
                 + "Adults: every rating, without titles made for little kids.");
 
@@ -139,6 +141,13 @@ public class SettingsActivity extends Activity {
             name.setTextColor(focused ? 0xFF111111 : Color.WHITE);
             value.setTextColor(focused ? 0xFF111111 : valueColor);
         });
+    }
+
+    private static int nextRotation(int seconds, int delta) {
+        int[] all = Prefs.ROTATE_SECONDS;
+        int at = 0;
+        while (all[at] != seconds) at++;
+        return all[(at + delta + all.length) % all.length];
     }
 
     private static int wrap(int minutes) {

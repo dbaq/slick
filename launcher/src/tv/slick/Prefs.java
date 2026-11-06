@@ -31,6 +31,17 @@ final class Prefs {
         p.edit().putString("dock", String.join(",", packages)).apply();
     }
 
+    /** How long each pick shows before the next; 0 = they don't rotate. */
+    static final int[] ROTATE_SECONDS = {5, 8, 12, 20, 0};
+
+    int rotateSeconds() {
+        return p.getInt("rotate_seconds", 5);
+    }
+
+    void setRotateSeconds(int seconds) {
+        p.edit().putInt("rotate_seconds", seconds).apply();
+    }
+
     Theme theme() {
         return Theme.valueOf(p.getString("theme", Theme.AUTO.name()));
     }

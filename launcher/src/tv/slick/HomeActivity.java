@@ -48,7 +48,6 @@ public class HomeActivity extends Activity {
     /** Shown with YouTube's look: it is the YouTube app here, just without the ads. */
     private static final String SMARTTUBE = "org.smarttube.beta";
 
-    private static final long ROTATE_MS = 5000;
     /** How far the dock (and the pick above it) slide down in hero mode, leaving the dock peeking. */
     private static final int HERO_DROP = 124;
     private static final long THEME_CHECK_MS = 60_000;
@@ -88,6 +87,8 @@ public class HomeActivity extends Activity {
     private TextView metaText;
     private TextView overviewText;
     private LinearLayout play;
+    /** The logo of the app the focused pick opens in. */
+    private ImageView playChip;
     private LinearLayout dots;
 
     private View wifiButton;
@@ -178,9 +179,11 @@ public class HomeActivity extends Activity {
     // ---- Picks -------------------------------------------------------------------------------------
 
     private void onPicks(List<Pick> fresh) {
-        picks = fresh;
+        // Each TV has its own apps: a pick for a service this one doesn't have can't be played here.
+        picks = new ArrayList<>();
+        for (Pick p : fresh) if (launchIntent(p.service.pkg) != null) picks.add(p);
         byService.clear();
-        for (Pick p : fresh) {
+        for (Pick p : picks) {
             List<Pick> group = byService.get(p.service);
             if (group == null) byService.put(p.service, group = new ArrayList<>());
             group.add(p);
@@ -224,7 +227,8 @@ public class HomeActivity extends Activity {
 
     private void scheduleRotate() {
         handler.removeCallbacks(rotate);
-        handler.postDelayed(rotate, ROTATE_MS);
+        int seconds = prefs.rotateSeconds();
+        if (seconds > 0) handler.postDelayed(rotate, seconds * 1000L);
     }
 
     private void step(int delta) {
@@ -266,7 +270,8 @@ public class HomeActivity extends Activity {
             });
         }
         if (hero) {
-            metaText.setText(p.meta + " · " + p.where());
+            metaText.setText(p.elsewhere.isEmpty() ? p.meta : p.meta + " · on " + p.elsewhere);
+            playChip.setImageDrawable(artFor(p.service.pkg));
             overviewText.setText(p.overview);
         } else {
             metaText.setText(p.service == Pick.Service.STREMIO
@@ -524,32 +529,34 @@ public class HomeActivity extends Activity {
         play = new LinearLayout(this);
         play.setOrientation(LinearLayout.HORIZONTAL);
         play.setGravity(Gravity.CENTER_VERTICAL);
-        play.setPadding(dp(22), dp(11), dp(30), dp(11));
+        play.setPadding(dp(7), dp(7), dp(26), dp(7));
         play.setId(View.generateViewId());
         // Grow from the left edge when focused: centred, it would poke past the info block and get clipped
         // while the block fades between picks.
         play.setPivotX(0);
         play.setFocusable(false);
         play.setAlpha(0f);
-        // Frosted glass like the dock; solid white when focused, the way Apple TV's buttons light up.
+        // Frosted glass like the dock, holding the logo of the app OK opens; focus brightens the glass
+        // and lights its edge rather than turning it solid white.
         GradientDrawable playBg = new GradientDrawable();
         playBg.setCornerRadius(dp(26));
         playBg.setColor(0x33FFFFFF);
         playBg.setStroke(dp(1), 0x22FFFFFF);
         play.setBackground(playBg);
-        GlyphDrawable playGlyph = new GlyphDrawable(GlyphDrawable.Kind.PLAY);
-        playGlyph.setColor(Color.WHITE);
-        View playIcon = new View(this);
-        playIcon.setBackground(playGlyph);
-        play.addView(playIcon, linear(13, 13, 0, 0, 12, 0));
-        TextView playLabel = text("Play", 17, MEDIUM, Color.WHITE);
-        play.addView(playLabel);
+        playChip = new ImageView(this);
+        playChip.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        playChip.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), view.getHeight() / 2f);
+            }
+        });
+        playChip.setClipToOutline(true);
+        play.addView(playChip, linear(62, 32, 0, 0, 14, 0));
+        play.addView(text("Watch now", 17, MEDIUM, Color.WHITE));
         play.setOnFocusChangeListener((v, focused) -> {
-            playBg.setColor(focused ? Color.WHITE : 0x33FFFFFF);
-            playBg.setStroke(dp(1), focused ? Color.WHITE : 0x22FFFFFF);
-            playGlyph.setColor(focused ? 0xFF111111 : Color.WHITE);
-            playLabel.setTextColor(focused ? 0xFF111111 : Color.WHITE);
-            v.setTranslationZ(focused ? dp(10) : 0);
+            playBg.setColor(focused ? 0x59FFFFFF : 0x33FFFFFF);
+            playBg.setStroke(dp(focused ? 2 : 1), focused ? 0xE6FFFFFF : 0x22FFFFFF);
             if (focused && !hero) enterHero();
             if (!focused && hero) exitHero();
             v.animate().scaleX(focused ? 1.08f : 1f).scaleY(focused ? 1.08f : 1f)
@@ -611,17 +618,30 @@ public class HomeActivity extends Activity {
         return launch != null ? launch : pm.getLaunchIntentForPackage(pkg);
     }
 
-    private View buildTile(PackageManager pm, String pkg, Intent launch) {
-        Drawable art;
-        boolean banner;
+    /** The app's TV banner (YouTube's look for SmartTube), or null when it ships none. */
+    private Drawable bannerOf(String pkg) {
+        if (pkg.equals(SMARTTUBE)) return new YouTubeBanner();
         try {
-            art = pkg.equals(SMARTTUBE) ? new YouTubeBanner() : pm.getApplicationBanner(pkg);
-            if (art == null) art = pm.getActivityBanner(launch);
-            banner = art != null;
-            if (!banner) art = pm.getApplicationIcon(pkg);
+            Drawable art = getPackageManager().getApplicationBanner(pkg);
+            return art != null ? art : getPackageManager().getActivityBanner(launchIntent(pkg));
         } catch (PackageManager.NameNotFoundException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    private Drawable artFor(String pkg) {
+        Drawable banner = bannerOf(pkg);
+        if (banner != null) return banner;
+        try {
+            return getPackageManager().getApplicationIcon(pkg);
+        } catch (PackageManager.NameNotFoundException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private View buildTile(PackageManager pm, String pkg, Intent launch) {
+        boolean banner = bannerOf(pkg) != null;
+        Drawable art = artFor(pkg);
 
         FrameLayout tile = new FrameLayout(this);
         tile.setTag(pkg);

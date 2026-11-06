@@ -186,7 +186,8 @@ final class Tmdb {
             if (seasons > 0) m.append(" · ").append(seasons).append(seasons == 1 ? " season" : " seasons");
         } else {
             int runtime = d.optInt("runtime");
-            if (runtime > 0) m.append(" · ").append(runtime / 60).append("h ").append(runtime % 60).append("m");
+            if (runtime >= 60) m.append(" · ").append(runtime / 60).append("h ").append(runtime % 60).append("m");
+            else if (runtime > 0) m.append(" · ").append(runtime).append("m");
         }
         return m.toString();
     }

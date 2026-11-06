@@ -12,7 +12,7 @@ import android.graphics.drawable.Drawable;
 /** Line icons for the glass buttons, drawn rather than shipped as assets. */
 final class GlyphDrawable extends Drawable {
 
-    enum Kind { WIFI, GEAR, PLAY }
+    enum Kind { WIFI, GEAR }
 
     private final Kind kind;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -48,16 +48,7 @@ final class GlyphDrawable extends Drawable {
         float cx = getBounds().exactCenterX();
         float cy = getBounds().exactCenterY();
         paint.setStrokeWidth(s * 0.085f);
-        if (kind == Kind.PLAY) {
-            path.reset();
-            path.moveTo(cx - s * 0.28f, cy - s * 0.34f);
-            path.lineTo(cx + s * 0.36f, cy);
-            path.lineTo(cx - s * 0.28f, cy + s * 0.34f);
-            path.close();
-            paint.setStyle(Paint.Style.FILL);
-            c.drawPath(path, paint);
-            paint.setStyle(Paint.Style.STROKE);
-        } else if (kind == Kind.WIFI) {
+        if (kind == Kind.WIFI) {
             float base = cy + s * 0.30f;
             int full = paint.getAlpha();
             for (int i = 1; i <= 3; i++) {
