@@ -87,8 +87,8 @@ public class HomeActivity extends Activity {
     private TextView metaText;
     private TextView overviewText;
     private LinearLayout play;
-    /** The logo of the app the focused pick opens in. */
-    private ImageView playChip;
+    /** "Watch on Netflix": where OK takes the focused pick. */
+    private TextView playLabel;
     private LinearLayout dots;
 
     private View wifiButton;
@@ -271,7 +271,7 @@ public class HomeActivity extends Activity {
         }
         if (hero) {
             metaText.setText(p.elsewhere.isEmpty() ? p.meta : p.meta + " · on " + p.elsewhere);
-            playChip.setImageDrawable(artFor(p.service.pkg));
+            playLabel.setText((p.service == Pick.Service.STREMIO ? "Watch in " : "Watch on ") + p.service.label);
             overviewText.setText(p.overview);
         } else {
             metaText.setText(p.service == Pick.Service.STREMIO
@@ -529,37 +529,25 @@ public class HomeActivity extends Activity {
         play = new LinearLayout(this);
         play.setOrientation(LinearLayout.HORIZONTAL);
         play.setGravity(Gravity.CENTER_VERTICAL);
-        play.setPadding(dp(7), dp(7), dp(26), dp(7));
+        play.setPadding(dp(18), dp(8), dp(18), dp(8));
         play.setId(View.generateViewId());
         // Grow from the left edge when focused: centred, it would poke past the info block and get clipped
         // while the block fades between picks.
         play.setPivotX(0);
         play.setFocusable(false);
         play.setAlpha(0f);
-        // Frosted glass like the dock, holding the logo of the app OK opens; focus brightens the glass
-        // and lights its edge rather than turning it solid white.
+        // Discreet frosted glass: the title is the star, the button just says where OK goes.
         GradientDrawable playBg = new GradientDrawable();
-        playBg.setCornerRadius(dp(26));
-        playBg.setColor(0x33FFFFFF);
-        playBg.setStroke(dp(1), 0x22FFFFFF);
+        playBg.setCornerRadius(dp(20));
+        playBg.setColor(0x26FFFFFF);
         play.setBackground(playBg);
-        playChip = new ImageView(this);
-        playChip.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        playChip.setOutlineProvider(new ViewOutlineProvider() {
-            @Override
-            public void getOutline(View view, Outline outline) {
-                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), view.getHeight() / 2f);
-            }
-        });
-        playChip.setClipToOutline(true);
-        play.addView(playChip, linear(62, 32, 0, 0, 14, 0));
-        play.addView(text("Watch now", 17, MEDIUM, Color.WHITE));
+        playLabel = text("", 15, MEDIUM, Color.WHITE);
+        play.addView(playLabel);
         play.setOnFocusChangeListener((v, focused) -> {
-            playBg.setColor(focused ? 0x59FFFFFF : 0x33FFFFFF);
-            playBg.setStroke(dp(focused ? 2 : 1), focused ? 0xE6FFFFFF : 0x22FFFFFF);
+            playBg.setColor(focused ? 0x40FFFFFF : 0x26FFFFFF);
             if (focused && !hero) enterHero();
             if (!focused && hero) exitHero();
-            v.animate().scaleX(focused ? 1.08f : 1f).scaleY(focused ? 1.08f : 1f)
+            v.animate().scaleX(focused ? 1.04f : 1f).scaleY(focused ? 1.04f : 1f)
                     .setInterpolator(ease).setDuration(180).start();
         });
         play.setOnKeyListener((v, keyCode, event) -> {
