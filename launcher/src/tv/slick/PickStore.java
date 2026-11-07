@@ -56,7 +56,7 @@ final class PickStore {
         imageDir.mkdirs();
     }
 
-    private static final String LIST_PREFIX = "picks-v13-";
+    private static final String LIST_PREFIX = "picks-v14-";
 
     /**
      * Delivers the cached picks (when asked to), then fresh ones when the cache is older than an hour. With

@@ -187,12 +187,8 @@ final class Trakt {
             JSONObject show = s.getJSONObject("show");
             int tmdb = tmdbId(show);
             if (tmdb <= 0) continue;
-            JSONObject p = new JSONObject(get("/shows/" + show.getJSONObject("ids").getInt("trakt")
-                    + "/progress/watched?hidden=false&specials=false", token));
-            JSONObject ne = p.optJSONObject("next_episode");
-            if (ne != null && p.getInt("completed") < p.getInt("aired")) {
-                next.add(new Next(tmdb, ne.getInt("season"), ne.getInt("number")));
-            }
+            int[] ne = nextAfterLatest(show, token);
+            if (ne != null) next.add(new Next(tmdb, ne[0], ne[1]));
         }
 
         // Premieres from NEW_DAYS ago to SOON_DAYS ahead; Trakt's calendar takes at most 33 days at a time.
@@ -227,14 +223,10 @@ final class Trakt {
             }
             // Seen already: a movie is done; a show only comes back when episodes are left, as its next one.
             if (type.equals("movie")) continue;
-            JSONObject p = new JSONObject(get("/shows/" + item.getJSONObject("ids").getInt("trakt")
-                    + "/progress/watched?hidden=false&specials=false", token));
-            JSONObject ne = p.optJSONObject("next_episode");
             boolean listed = false;
             for (Next n : next) listed |= n.tmdbId == tmdb;
-            if (ne != null && p.getInt("completed") < p.getInt("aired") && !listed) {
-                next.add(new Next(tmdb, ne.getInt("season"), ne.getInt("number")));
-            }
+            int[] ne = listed ? null : nextAfterLatest(item, token);
+            if (ne != null) next.add(new Next(tmdb, ne[0], ne[1]));
         }
 
         List<String> recommended = new ArrayList<>();
@@ -252,6 +244,30 @@ final class Trakt {
             if (tmdb > 0) mostWatched.add(tmdb);
         }
         return new Taste(watched, next, premieres, watchlist, recommended, mostWatched);
+    }
+
+    /**
+     * The aired episode right after the latest one watched, as {season, episode}; null when caught up.
+     * Not Trakt's own "next episode", which is the first unwatched one: an old episode that never got
+     * logged would otherwise send you back to it, when watching later ones means it was seen.
+     */
+    private int[] nextAfterLatest(JSONObject show, String token) throws IOException, JSONException {
+        JSONObject p = new JSONObject(get("/shows/" + show.getJSONObject("ids").getInt("trakt")
+                + "/progress/watched?hidden=false&specials=false", token));
+        List<int[]> aired = new ArrayList<>();
+        int latest = -1;
+        JSONArray seasons = p.getJSONArray("seasons");
+        for (int i = 0; i < seasons.length(); i++) {
+            JSONObject season = seasons.getJSONObject(i);
+            if (season.getInt("number") == 0) continue;
+            JSONArray episodes = season.getJSONArray("episodes");
+            for (int j = 0; j < episodes.length(); j++) {
+                JSONObject e = episodes.getJSONObject(j);
+                if (e.getBoolean("completed")) latest = aired.size();
+                aired.add(new int[] {season.getInt("number"), e.getInt("number")});
+            }
+        }
+        return latest + 1 < aired.size() ? aired.get(latest + 1) : null;
     }
 
     private static int tmdbId(JSONObject item) throws JSONException {
