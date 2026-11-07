@@ -60,7 +60,7 @@ final class PickStore {
     void load(Audience audience, Season season, boolean holidayDay, Set<String> hidden, Listener listener,
             boolean deliverCached) {
         String when = season == null ? "" : "-" + season.name() + (holidayDay ? "-day" : "");
-        File listFile = new File(filesDir, ("picks-v7-" + audience.name() + when + ".json").toLowerCase());
+        File listFile = new File(filesDir, ("picks-v8-" + audience.name() + when + ".json").toLowerCase());
         network.execute(() -> {
             List<Pick> cached = readList(listFile);
             if (deliverCached && !cached.isEmpty()) main.post(() -> listener.onPicks(cached));
@@ -74,7 +74,7 @@ final class PickStore {
                 writeList(listFile, fresh);
                 for (Pick p : fresh) {
                     Log.i(TAG, "pick " + audience + " | " + p.service.label + " | " + (p.series ? "show " : "movie")
-                            + " | " + p.title + " | " + p.meta);
+                            + " | " + p.title + " | " + p.meta());
                 }
                 main.post(() -> listener.onPicks(fresh));
             } catch (IOException | JSONException e) {

@@ -414,7 +414,7 @@ final class Tmdb {
         if (service == Pick.Service.STREMIO && imdb.isEmpty()) return null;
 
         String title = d.optString(series ? "name" : "title");
-        return new Pick(series, id, title, meta(series, d), d.optString("overview"),
+        return new Pick(series, id, title, facts(series, d), genres(d), d.optString("overview"),
                 d.getString("backdrop_path"), logo(d), imdb, service, elsewhere, "", false);
     }
 
@@ -470,12 +470,19 @@ final class Tmdb {
         return Pick.Service.STREMIO;
     }
 
-    private static String meta(boolean series, JSONObject d) throws JSONException {
-        StringBuilder m = new StringBuilder(series ? "Series" : "Movie");
+    /** The first two genres, "Animation, Comedy". */
+    private static String genres(JSONObject d) throws JSONException {
         JSONArray genres = d.getJSONArray("genres");
+        StringBuilder g = new StringBuilder();
         for (int i = 0; i < Math.min(2, genres.length()); i++) {
-            m.append(i == 0 ? " · " : ", ").append(genres.getJSONObject(i).getString("name"));
+            g.append(i == 0 ? "" : ", ").append(genres.getJSONObject(i).getString("name"));
         }
+        return g.toString();
+    }
+
+    /** "Series · 2019 · 3 seasons" or "Movie · 2016 · 1h 47m". */
+    private static String facts(boolean series, JSONObject d) throws JSONException {
+        StringBuilder m = new StringBuilder(series ? "Series" : "Movie");
         String date = d.optString(series ? "first_air_date" : "release_date");
         if (date.length() >= 4) m.append(" · ").append(date, 0, 4);
         if (series) {

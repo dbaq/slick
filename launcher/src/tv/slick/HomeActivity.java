@@ -302,13 +302,11 @@ public class HomeActivity extends Activity {
             });
         }
         if (hero) {
-            metaText.setText(p.elsewhere.isEmpty() ? p.meta : p.meta + " · on " + p.elsewhere);
+            metaText.setText(p.elsewhere.isEmpty() ? p.meta() : p.meta() + " · on " + p.elsewhere);
             playLabel.setText((p.service == Pick.Service.STREMIO ? "Watch in " : "Watch on ") + p.service.label);
             overviewText.setText(p.overview);
         } else {
-            String kind = p.holiday && season != null ? season.label + " pick" : "Trending";
-            metaText.setText(p.service == Pick.Service.STREMIO
-                    ? kind + " · " + p.where() : kind + " on " + p.service.label);
+            metaText.setText(p.facts);
         }
     }
 
@@ -520,12 +518,12 @@ public class HomeActivity extends Activity {
     private View buildButtons() {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        if (home != null) {
-            houseButton = glassButton(GlyphDrawable.Kind.HOUSE, () -> panel.open());
-            row.addView(houseButton, linear(44, 44, 0, 0, 12, 0));
-        }
         row.addView(glassButton(GlyphDrawable.Kind.SEARCH, open(new Intent(this, SearchActivity.class))),
                 linear(44, 44, 0, 0, 0, 0));
+        if (home != null) {
+            houseButton = glassButton(GlyphDrawable.Kind.HOUSE, () -> panel.open());
+            row.addView(houseButton, linear(44, 44, 12, 0, 0, 0));
+        }
         wifiButton = glassButton(GlyphDrawable.Kind.WIFI, open(new Intent(Settings.ACTION_WIFI_SETTINGS)));
         row.addView(wifiButton, linear(44, 44, 12, 0, 0, 0));
         row.addView(glassButton(GlyphDrawable.Kind.GEAR, open(new Intent(this, SettingsActivity.class))),

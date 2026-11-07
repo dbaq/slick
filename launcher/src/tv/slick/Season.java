@@ -4,14 +4,12 @@ import java.util.Calendar;
 
 /** Holidays that bring their own picks, for the {@link #LEAD_DAYS} days up to and including the day. */
 enum Season {
-    HALLOWEEN("Halloween", Calendar.OCTOBER, 31, "3335|318653", new int[][] {{Calendar.OCTOBER, 31}}),
-    CHRISTMAS("Holiday", Calendar.DECEMBER, 25, "207317|260365",
+    HALLOWEEN(Calendar.OCTOBER, 31, "3335|318653", new int[][] {{Calendar.OCTOBER, 31}}),
+    CHRISTMAS(Calendar.DECEMBER, 25, "207317|260365",
             new int[][] {{Calendar.DECEMBER, 24}, {Calendar.DECEMBER, 25}});
 
     static final int LEAD_DAYS = 45;
 
-    /** Caption word: "Holiday pick on Disney+". */
-    final String label;
     private final int month;
     private final int day;
     /** TMDB keyword ids, OR-ed. */
@@ -19,8 +17,7 @@ enum Season {
     /** Days when every pick is a holiday pick. */
     private final int[][] fullDays;
 
-    Season(String label, int month, int day, String keywords, int[][] fullDays) {
-        this.label = label;
+    Season(int month, int day, String keywords, int[][] fullDays) {
         this.month = month;
         this.day = day;
         this.keywords = keywords;

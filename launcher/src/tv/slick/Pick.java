@@ -30,7 +30,10 @@ final class Pick {
     final boolean series;
     final int tmdbId;
     final String title;
-    final String meta;
+    /** "Series · 2019 · 3 seasons" or "Movie · 2016 · 1h 47m". */
+    final String facts;
+    /** "Animation, Comedy", or "". */
+    final String genres;
     final String overview;
     final String backdrop;
     final String logo;
@@ -43,12 +46,13 @@ final class Pick {
     /** One of the season's picks (Christmas, Halloween). */
     final boolean holiday;
 
-    Pick(boolean series, int tmdbId, String title, String meta, String overview, String backdrop, String logo,
+    Pick(boolean series, int tmdbId, String title, String facts, String genres, String overview, String backdrop, String logo,
             String imdbId, Service service, String elsewhere, String link, boolean holiday) {
         this.series = series;
         this.tmdbId = tmdbId;
         this.title = title;
-        this.meta = meta;
+        this.facts = facts;
+        this.genres = genres;
         this.overview = overview;
         this.backdrop = backdrop;
         this.logo = logo;
@@ -60,17 +64,25 @@ final class Pick {
     }
 
     Pick withLink(String link) {
-        return new Pick(series, tmdbId, title, meta, overview, backdrop, logo, imdbId, service, elsewhere, link, holiday);
+        return new Pick(series, tmdbId, title, facts, genres, overview, backdrop, logo, imdbId, service, elsewhere, link, holiday);
     }
 
     Pick asHoliday() {
-        return new Pick(series, tmdbId, title, meta, overview, backdrop, logo, imdbId, service, elsewhere, link, true);
+        return new Pick(series, tmdbId, title, facts, genres, overview, backdrop, logo, imdbId, service, elsewhere, link, true);
     }
 
     /** The same title in Stremio, for when its service's app isn't on this TV. */
     Pick inStremio() {
-        return new Pick(series, tmdbId, title, meta, overview, backdrop, logo, imdbId, Service.STREMIO, service.label,
+        return new Pick(series, tmdbId, title, facts, genres, overview, backdrop, logo, imdbId, Service.STREMIO, service.label,
                 "", holiday);
+    }
+
+    /** "Series · Animation, Comedy · 2019 · 3 seasons": the facts with the genres after the kind. */
+    String meta() {
+        if (genres.isEmpty()) return facts;
+        int kindEnd = facts.indexOf(" · ");
+        return kindEnd < 0 ? facts + " · " + genres
+                : facts.substring(0, kindEnd) + " · " + genres + facts.substring(kindEnd);
     }
 
     String where() {
@@ -80,14 +92,14 @@ final class Pick {
 
     JSONObject toJson() throws JSONException {
         return new JSONObject()
-                .put("series", series).put("tmdb", tmdbId).put("title", title).put("meta", meta).put("overview", overview)
+                .put("series", series).put("tmdb", tmdbId).put("title", title).put("facts", facts).put("genres", genres).put("overview", overview)
                 .put("backdrop", backdrop).put("logo", logo).put("imdb", imdbId)
                 .put("service", service.name()).put("elsewhere", elsewhere).put("link", link)
                 .put("holiday", holiday);
     }
 
     static Pick fromJson(JSONObject o) throws JSONException {
-        return new Pick(o.getBoolean("series"), o.getInt("tmdb"), o.getString("title"), o.getString("meta"),
+        return new Pick(o.getBoolean("series"), o.getInt("tmdb"), o.getString("title"), o.getString("facts"), o.getString("genres"),
                 o.getString("overview"), o.getString("backdrop"), o.getString("logo"), o.getString("imdb"),
                 Service.valueOf(o.getString("service")), o.getString("elsewhere"), o.getString("link"),
                 o.getBoolean("holiday"));

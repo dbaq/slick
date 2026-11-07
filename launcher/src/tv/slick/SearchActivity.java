@@ -221,10 +221,10 @@ public class SearchActivity extends Activity {
         return tile;
     }
 
-    /** "Series · 2019 · " from the pick's meta line ("Series · Animation, Comedy · 2019 · …"). */
+    /** "Series · 2019 · " from the pick's facts ("Series · 2019 · 3 seasons"). */
     private static String year(Pick p) {
         String kind = p.series ? "Series" : "Movie";
-        for (String part : p.meta.split(" · ")) {
+        for (String part : p.facts.split(" · ")) {
             if (part.matches("\\d{4}")) return kind + " · " + part + " · ";
         }
         return kind + " · ";
