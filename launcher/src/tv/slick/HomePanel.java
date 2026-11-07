@@ -89,8 +89,10 @@ final class HomePanel extends FrameLayout {
 
     /** Rebuilds the tiles when Settings changed the device list. */
     void setHome(Home fresh) {
-        if (home != null && sameDevices(home, fresh)) return;
+        boolean sameTiles = home != null && sameDevices(home, fresh);
+        // Always take the fresh setup: a new token or address arrives with the same devices.
         home = fresh;
+        if (sameTiles) return;
         adjusting = null;
         tiles.clear();
         content.removeAllViews();
