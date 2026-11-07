@@ -70,7 +70,15 @@ final class Tmdb {
     private static final int REALITY_GENRE = 10764;
     /** Talk shows and news are tagged reality-adjacent but aren't what anyone means by it. */
     private static final Set<Integer> NOT_REALITY = new HashSet<>(java.util.Arrays.asList(10767, 10763));
-    private static final int WRESTLING_KEYWORD = 5970;
+    /** Wrestling and sports shows (American Gladiators) are tagged game shows too. */
+    private static final Set<Integer> SPORTS_KEYWORDS = new HashSet<>(java.util.Arrays.asList(5970, 215559));
+    /**
+     * Drama and competition reality, the Housewives and Drag Race kind: reality tv, reality series,
+     * cooking competition, game show, drag queen, dating show, fashion design, real estate,
+     * social experiment, housewife. Bravo's shows count without one; survival, clip and pawn-shop shows don't.
+     */
+    private static final Set<Integer> DRAMA_REALITY = new HashSet<>(java.util.Arrays.asList(
+            275693, 360186, 222083, 4325, 824, 215119, 177040, 179867, 257115, 3451));
     /** Monarchy, British monarchy, royal family, British royal family, period drama. */
     private static final String ROYAL_KEYWORDS = "2471|220649|4833|215634|15060";
     /** At most this many of a service's picks are the account's own (continue, new season, watchlist). */
@@ -482,17 +490,26 @@ final class Tmdb {
         return interleave(lists);
     }
 
-    /** A reality show: English, the reality genre, not talk, news or wrestling. No rating bar (that's the point). */
+    /**
+     * A reality show of the drama or competition kind: English, the reality genre, on Bravo or tagged like
+     * the Housewives and Drag Race; not talk, news or sports. No rating bar (that's the point).
+     */
     private static Candidate realityDetails(String candidate) throws IOException, JSONException {
         if (!candidate.startsWith("tv:")) return null;
         JSONObject d = fetchDetails(candidate);
         if (d.isNull("backdrop_path") || !d.optString("original_language").equals("en")) return null;
         Set<Integer> genres = genreIds(d);
         if (!genres.contains(REALITY_GENRE) || !Collections.disjoint(genres, NOT_REALITY)) return null;
+        boolean drama = false;
+        JSONArray networks = d.getJSONArray("networks");
+        for (int i = 0; i < networks.length(); i++) drama |= networks.getJSONObject(i).getInt("id") == BRAVO;
         JSONArray keywords = d.getJSONObject("keywords").getJSONArray("results");
         for (int i = 0; i < keywords.length(); i++) {
-            if (keywords.getJSONObject(i).getInt("id") == WRESTLING_KEYWORD) return null;
+            int id = keywords.getJSONObject(i).getInt("id");
+            if (SPORTS_KEYWORDS.contains(id)) return null;
+            drama |= DRAMA_REALITY.contains(id);
         }
+        if (!drama) return null;
         if (!Audience.ADULTS.allows(true, rating(true, d), genres)) return null;
         Pick pick = toPick(true, d);
         return pick == null ? null : new Candidate(pick, flavor(d));

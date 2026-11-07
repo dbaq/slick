@@ -63,7 +63,7 @@ final class PickStore {
         Trakt trakt = new Trakt(filesDir);
         // Trakt shapes Adults picks only: the account holds the kids' viewing too.
         boolean personal = audience == Audience.ADULTS && trakt.connected();
-        File listFile = new File(filesDir, ("picks-v9-" + audience.name() + when + (personal ? "-trakt" : "") + ".json").toLowerCase());
+        File listFile = new File(filesDir, ("picks-v12-" + audience.name() + when + (personal ? "-trakt" : "") + ".json").toLowerCase());
         network.execute(() -> {
             List<Pick> cached = readList(listFile);
             if (deliverCached && !cached.isEmpty()) main.post(() -> listener.onPicks(cached));
