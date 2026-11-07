@@ -7,6 +7,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -61,7 +62,21 @@ final class Tmdb {
     /** Preschool shows still on the air count as new for Kids. */
     private static final long ON_AIR_MS = 180L * 24 * 3600 * 1000;
 
-    private enum Kind { HOLIDAY, NEW, CLASSIC }
+    private enum Kind { HOLIDAY, NEW, CLASSIC, REALITY }
+
+    /** Adults: Bravo-style reality gets this many of each service's picks (about a quarter). */
+    private static final int REALITY_PER_SERVICE = 2;
+    private static final int BRAVO = 74;
+    private static final int REALITY_GENRE = 10764;
+    /** Talk shows and news are tagged reality-adjacent but aren't what anyone means by it. */
+    private static final Set<Integer> NOT_REALITY = new HashSet<>(java.util.Arrays.asList(10767, 10763));
+    private static final int WRESTLING_KEYWORD = 5970;
+    /** Monarchy, British monarchy, royal family, British royal family, period drama. */
+    private static final String ROYAL_KEYWORDS = "2471|220649|4833|215634|15060";
+    /** At most this many of a service's picks are the account's own (continue, new season, watchlist). */
+    private static final int PERSONAL_PER_SERVICE = 5;
+    private static final int NEXT_PER_SERVICE = 3;
+    private static final long DAY_MS = 24L * 3600 * 1000;
 
     /** A title that passed the rules, with what the final choice needs to know about it. */
     private static final class Candidate {
@@ -75,14 +90,28 @@ final class Tmdb {
         }
     }
 
-    /** {@code season} is null outside the holidays; {@code fullDay} makes every pick a holiday pick. */
+    /**
+     * {@code season} is null outside the holidays; {@code fullDay} makes every pick a holiday pick.
+     * {@code taste} is the Trakt account, for Adults on a TV signed in to Trakt; null otherwise.
+     */
     static List<Pick> fetchPicks(Audience audience, Season season, boolean fullDay, Set<String> hidden,
-            Watchmode watchmode) throws IOException, JSONException {
+            Watchmode watchmode, Trakt.Taste taste) throws IOException, JSONException {
         Map<Kind, Integer> capacity = new java.util.EnumMap<>(Kind.class);
         int holiday = season == null ? 0 : fullDay ? PER_SERVICE : PER_SERVICE / 2;
+        int reality = audience == Audience.ADULTS && holiday < PER_SERVICE ? REALITY_PER_SERVICE : 0;
+        int rest = PER_SERVICE - holiday - reality;
         capacity.put(Kind.HOLIDAY, holiday);
-        capacity.put(Kind.NEW, (PER_SERVICE - holiday) / 2);
-        capacity.put(Kind.CLASSIC, (PER_SERVICE - holiday) / 2);
+        capacity.put(Kind.NEW, rest / 2);
+        capacity.put(Kind.CLASSIC, rest - rest / 2);
+        capacity.put(Kind.REALITY, reality);
+
+        Set<String> seen = new HashSet<>(hidden);
+        Map<Pick.Service, List<Pick>> personal = new java.util.EnumMap<>(Pick.Service.class);
+        if (taste != null) {
+            personal = personal(taste, audience, seen);
+            // What they've seen comes back only as "next episode" or "new season", never as a plain pick.
+            seen.addAll(taste.watched);
+        }
 
         // Candidate lists, each feeding one kind of pool; pools are per (service, kind).
         Map<String, List<String>> lists = new LinkedHashMap<>();
@@ -103,13 +132,14 @@ final class Tmdb {
                     interleave(trending(), discoverNew(audience, ""))));
             lists.put(Kind.CLASSIC + "/stremio", interleave(discoverClassics(audience, "")));
         }
+        if (taste != null && holiday < PER_SERVICE) lists.put(Kind.CLASSIC + "/trakt", taste.recommended);
+        if (reality > 0) lists.put(Kind.REALITY + "/all", realityCandidates(taste));
 
         Map<String, List<Candidate>> pools = new LinkedHashMap<>();
         for (Pick.Service s : Pick.Service.values()) {
             for (Kind k : Kind.values()) pools.put(s + "/" + k, new ArrayList<>());
         }
 
-        Set<String> seen = new HashSet<>(hidden);
         boolean progress = true;
         for (int round = 0; progress; round++) {
             progress = false;
@@ -120,7 +150,7 @@ final class Tmdb {
                 if (!seen.add(candidate)) continue;
                 Kind kind = Kind.valueOf(list.getKey().substring(0, list.getKey().indexOf('/')));
                 if (!anyOpen(kind, capacity, pools)) continue;
-                Candidate c = details(candidate, audience);
+                Candidate c = kind == Kind.REALITY ? realityDetails(candidate) : details(candidate, audience);
                 if (c == null) continue;
                 List<Candidate> pool = pools.get(c.pick.service + "/" + kind);
                 if (pool.size() < capacity.get(kind) * POOL) {
@@ -131,7 +161,12 @@ final class Tmdb {
         }
 
         List<Pick> picks = new ArrayList<>();
-        for (Pick.Service s : Pick.Service.values()) picks.addAll(choose(s, audience, capacity, pools));
+        for (Pick.Service s : Pick.Service.values()) {
+            List<Pick> own = personal.getOrDefault(s, new ArrayList<>());
+            List<Pick> regular = choose(s, audience, capacity, pools);
+            picks.addAll(own);
+            picks.addAll(regular.subList(0, Math.max(0, Math.min(regular.size(), PER_SERVICE - own.size()))));
+        }
         List<Pick> linked = new ArrayList<>();
         for (Pick p : picks) linked.add(p.service == Pick.Service.STREMIO ? p : p.withLink(watchmode.link(p)));
         return linked;
@@ -279,6 +314,13 @@ final class Tmdb {
     private static List<List<String>> discoverClassics(Audience audience, String where) throws IOException, JSONException {
         List<List<String>> out = new ArrayList<>();
         boolean kids = audience.discoverCertification != null;
+        if (audience == Audience.ADULTS) {
+            // British drama and royalty rank first: well-made, and a favourite in the house.
+            out.add(discover("tv", "/discover/tv?sort_by=popularity.desc&with_origin_country=GB&with_genres=18"
+                    + "&vote_count.gte=100&vote_average.gte=7" + showFilters(audience) + where));
+            out.add(discover("tv", "/discover/tv?sort_by=popularity.desc&with_keywords=" + ROYAL_KEYWORDS
+                    + "&vote_count.gte=50" + showFilters(audience) + where));
+        }
         if (audience == Audience.KIDS) {
             out.add(discover("tv", "/discover/tv?sort_by=popularity.desc&with_genres=" + Audience.KIDS_GENRE
                     + "&vote_count.gte=" + MIN_KID_SHOW_VOTES + "&language=en-US&with_original_language=en" + where));
@@ -358,6 +400,105 @@ final class Tmdb {
     }
 
     /**
+     * The account's own picks per service, in this order: a new season that just came out, new seasons
+     * coming, the next episode of shows in progress, then the watchlist. Each title once; all of them are
+     * added to {@code seen}. No quality bar: these are their shows. Still only what this audience may watch
+     * (the account holds the kids' viewing too).
+     */
+    private static Map<Pick.Service, List<Pick>> personal(Trakt.Taste taste, Audience audience, Set<String> seen)
+            throws IOException, JSONException {
+        long now = System.currentTimeMillis();
+        List<Pick> out = new ArrayList<>();
+        List<Trakt.Premiere> premieres = new ArrayList<>(taste.premieres);
+        Collections.sort(premieres, (a, b) -> Long.compare(a.airsMs, b.airsMs));
+        for (boolean out1 : new boolean[] {true, false}) {
+            for (Trakt.Premiere p : premieres) {
+                boolean isOut = p.airsMs <= now;
+                if (isOut != out1 || seen.contains("tv:" + p.tmdbId)) continue;
+                Pick pick = own("tv:" + p.tmdbId, audience);
+                if (pick == null) continue;
+                seen.add("tv:" + p.tmdbId);
+                out.add(pick.withCaption(isOut ? "New season · Season " + p.season + " is out"
+                        : "Season " + p.season + " · " + when(p.airsMs, now), isOut));
+            }
+        }
+        Map<Pick.Service, Integer> nexts = new java.util.EnumMap<>(Pick.Service.class);
+        for (Trakt.Next n : taste.next) {
+            if (seen.contains("tv:" + n.tmdbId)) continue;
+            Pick pick = own("tv:" + n.tmdbId, audience);
+            if (pick == null || nexts.getOrDefault(pick.service, 0) >= NEXT_PER_SERVICE) continue;
+            seen.add("tv:" + n.tmdbId);
+            nexts.merge(pick.service, 1, Integer::sum);
+            out.add(pick.withCaption("Next: S" + n.season + " E" + n.episode, false));
+        }
+        for (String w : taste.watchlist) {
+            if (seen.contains(w)) continue;
+            Pick pick = own(w, audience);
+            if (pick == null) continue;
+            seen.add(w);
+            out.add(pick.withCaption("On your watchlist", false));
+        }
+        Map<Pick.Service, List<Pick>> byService = new java.util.EnumMap<>(Pick.Service.class);
+        for (Pick p : out) {
+            List<Pick> list = byService.computeIfAbsent(p.service, k -> new ArrayList<>());
+            if (list.size() < PERSONAL_PER_SERVICE) list.add(p);
+        }
+        return byService;
+    }
+
+    /** "in 12 days", or the weekday ("Friday") within a week. */
+    private static String when(long airsMs, long now) {
+        long days = (airsMs - now + DAY_MS - 1) / DAY_MS;
+        return days < 7 ? new SimpleDateFormat("EEEE", Locale.US).format(new Date(airsMs)) : "in " + days + " days";
+    }
+
+    /** One of the account's titles: needs a backdrop, this audience's OK, and somewhere to open it. */
+    private static Pick own(String candidate, Audience audience) throws IOException, JSONException {
+        boolean series = candidate.startsWith("tv:");
+        JSONObject d = fetchDetails(candidate);
+        if (d.isNull("backdrop_path")) return null;
+        if (!audience.allows(series, rating(series, d), genreIds(d))) return null;
+        return toPick(series, d);
+    }
+
+    /**
+     * Reality for Adults: shows like the account's most-watched reality shows (TMDB's "more like this"),
+     * then Bravo's. Without Trakt, Bravo's alone.
+     */
+    private static List<String> realityCandidates(Trakt.Taste taste) throws IOException, JSONException {
+        List<List<String>> lists = new ArrayList<>();
+        if (taste != null) {
+            int seeds = 0;
+            for (int id : taste.mostWatched) {
+                if (seeds == 6) break;
+                JSONObject d = get("/tv/" + id + "?language=en-US");
+                if (!genreIds(d).contains(REALITY_GENRE)) continue;
+                seeds++;
+                lists.add(ids("tv", get("/tv/" + id + "/recommendations?language=en-US")));
+            }
+        }
+        lists.add(discover("tv", "/discover/tv?sort_by=popularity.desc&with_networks=" + BRAVO
+                + "&without_genres=10767&language=en-US&with_original_language=en"));
+        return interleave(lists);
+    }
+
+    /** A reality show: English, the reality genre, not talk, news or wrestling. No rating bar (that's the point). */
+    private static Candidate realityDetails(String candidate) throws IOException, JSONException {
+        if (!candidate.startsWith("tv:")) return null;
+        JSONObject d = fetchDetails(candidate);
+        if (d.isNull("backdrop_path") || !d.optString("original_language").equals("en")) return null;
+        Set<Integer> genres = genreIds(d);
+        if (!genres.contains(REALITY_GENRE) || !Collections.disjoint(genres, NOT_REALITY)) return null;
+        JSONArray keywords = d.getJSONObject("keywords").getJSONArray("results");
+        for (int i = 0; i < keywords.length(); i++) {
+            if (keywords.getJSONObject(i).getInt("id") == WRESTLING_KEYWORD) return null;
+        }
+        if (!Audience.ADULTS.allows(true, rating(true, d), genres)) return null;
+        Pick pick = toPick(true, d);
+        return pick == null ? null : new Candidate(pick, flavor(d));
+    }
+
+    /**
      * Null when the title is skipped: not for this audience, below the quality bar, a short, no backdrop,
      * or nowhere to open it (no dock service and no IMDb id for Stremio).
      */
@@ -388,7 +529,7 @@ final class Tmdb {
         int id = Integer.parseInt(candidate.substring(candidate.indexOf(':') + 1));
         return get("/" + (series ? "tv" : "movie") + "/" + id
                 + "?language=en-US&append_to_response=watch/providers,external_ids,images,"
-                + (series ? "content_ratings" : "release_dates") + "&include_image_language=en,null");
+                + (series ? "content_ratings" : "release_dates") + ",keywords&include_image_language=en,null");
     }
 
     /** The title and where it opens, or null when there's nowhere: no dock service and no IMDb id for Stremio. */
@@ -415,7 +556,7 @@ final class Tmdb {
 
         String title = d.optString(series ? "name" : "title");
         return new Pick(series, id, title, facts(series, d), genres(d), d.optString("overview"),
-                d.getString("backdrop_path"), logo(d), imdb, service, elsewhere, "", false);
+                d.getString("backdrop_path"), logo(d), imdb, service, elsewhere, "", false, "", false);
     }
 
     private static boolean goodEnough(boolean series, JSONObject d, Set<Integer> genres) {

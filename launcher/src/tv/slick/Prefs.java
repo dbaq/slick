@@ -61,6 +61,15 @@ final class Prefs {
         return (pick.series ? "tv:" : "movie:") + pick.tmdbId;
     }
 
+    /** True the first time today a new season's pick asks to open the home screen; false after that. */
+    boolean leadToday(Pick pick) {
+        String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
+        String k = "lead:" + key(pick);
+        if (today.equals(p.getString(k, ""))) return false;
+        p.edit().putString(k, today).apply();
+        return true;
+    }
+
     /** How long each pick shows before the next; 0 = they don't rotate. */
     static final int[] ROTATE_SECONDS = {5, 8, 12, 20, 0};
 

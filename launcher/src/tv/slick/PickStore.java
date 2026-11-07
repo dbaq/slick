@@ -60,13 +60,17 @@ final class PickStore {
     void load(Audience audience, Season season, boolean holidayDay, Set<String> hidden, Listener listener,
             boolean deliverCached) {
         String when = season == null ? "" : "-" + season.name() + (holidayDay ? "-day" : "");
-        File listFile = new File(filesDir, ("picks-v8-" + audience.name() + when + ".json").toLowerCase());
+        Trakt trakt = new Trakt(filesDir);
+        // Trakt shapes Adults picks only: the account holds the kids' viewing too.
+        boolean personal = audience == Audience.ADULTS && trakt.connected();
+        File listFile = new File(filesDir, ("picks-v9-" + audience.name() + when + (personal ? "-trakt" : "") + ".json").toLowerCase());
         network.execute(() -> {
             List<Pick> cached = readList(listFile);
             if (deliverCached && !cached.isEmpty()) main.post(() -> listener.onPicks(cached));
             if (!cached.isEmpty() && System.currentTimeMillis() - listFile.lastModified() < MAX_AGE_MS) return;
             try {
-                List<Pick> fresh = Tmdb.fetchPicks(audience, season, holidayDay, hidden, new Watchmode(filesDir));
+                List<Pick> fresh = Tmdb.fetchPicks(audience, season, holidayDay, hidden, new Watchmode(filesDir),
+                        personal ? trakt.taste() : null);
                 for (Pick p : fresh) {
                     fetchToDisk(backdropUrl(p));
                     if (!p.logo.isEmpty()) fetchToDisk(logoUrl(p));
@@ -74,7 +78,7 @@ final class PickStore {
                 writeList(listFile, fresh);
                 for (Pick p : fresh) {
                     Log.i(TAG, "pick " + audience + " | " + p.service.label + " | " + (p.series ? "show " : "movie")
-                            + " | " + p.title + " | " + p.meta());
+                            + " | " + p.title + " | " + (p.caption.isEmpty() ? p.meta() : p.caption));
                 }
                 main.post(() -> listener.onPicks(fresh));
             } catch (IOException | JSONException e) {

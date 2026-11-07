@@ -12,7 +12,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT/gen" "$OUT/classes" "$OUT/dex"
 
 prop() { sed -n "s/^$1=//p" config.properties; }
-for k in tmdb_token watchmode_key; do
+for k in tmdb_token watchmode_key trakt_client_id; do
   [ -n "$(prop $k)" ] || { echo "config.properties needs $k" >&2; exit 1; }
 done
 mkdir -p "$OUT/gen/tv/slick"
@@ -25,6 +25,7 @@ final class Config {
     static final double LATITUDE = $(prop latitude);
     static final double LONGITUDE = $(prop longitude);
     static final String WATCHMODE_KEY = "$(prop watchmode_key)";
+    static final String TRAKT_CLIENT_ID = "$(prop trakt_client_id)";
 }
 JAVA
 

@@ -12,6 +12,9 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 
@@ -20,8 +23,17 @@ public class SettingsActivity extends Activity {
 
     private static final int HALF_HOUR = 30;
 
+    private static final String TRAKT_ABOUT = "Evening picks from your Trakt history: next episodes, new seasons and your watchlist.";
+    /** A second OK within this long disconnects Trakt. */
+    private static final long CONFIRM_MS = 5000;
+
     private Prefs prefs;
     private LinearLayout list;
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private Trakt trakt;
+    /** The sign-in under way, or null. */
+    private volatile Thread signIn;
+    private long confirmUntil;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -59,6 +71,7 @@ public class SettingsActivity extends Activity {
                 () -> prefs.seasonal() ? "On" : "Off",
                 d -> prefs.setSeasonal(!prefs.seasonal()));
         hiddenRow();
+        traktRow();
         note("Kids: G movies, TV-Y and TV-G shows. Family: up to PG and TV-PG. "
                 + "Adults: every rating, without titles made for little kids.");
 
@@ -129,6 +142,77 @@ public class SettingsActivity extends Activity {
             refresh.run();
         });
         focusStyle(row, v);
+    }
+
+    /**
+     * Trakt sign-in: OK shows a code to type at trakt.tv/activate on a phone, and the row says "Connected"
+     * once it's approved. When connected, OK twice disconnects this TV.
+     */
+    private void traktRow() {
+        trakt = new Trakt(getFilesDir());
+        LinearLayout row = row("Trakt", TRAKT_ABOUT);
+        TextView about = (TextView) ((LinearLayout) row.getChildAt(0)).getChildAt(1);
+        TextView v = Ui.text(this, trakt.connected() ? "Connected" : "Not connected", 17, Ui.REGULAR, 0x99FFFFFF);
+        row.addView(v);
+        row.setOnClickListener(view -> {
+            if (signIn != null) return;
+            if (trakt.connected()) {
+                if (System.currentTimeMillis() > confirmUntil) {
+                    confirmUntil = System.currentTimeMillis() + CONFIRM_MS;
+                    v.setText("OK again to disconnect");
+                    return;
+                }
+                trakt.disconnect();
+                v.setText("Not connected");
+                return;
+            }
+            v.setText("Getting a code…");
+            Thread t = new Thread(() -> signIn(v, about));
+            signIn = t;
+            t.start();
+        });
+        focusStyle(row, v);
+    }
+
+    /** Runs on its own thread: get a code, show it, wait for it to be approved or to run out. */
+    private void signIn(TextView v, TextView about) {
+        try {
+            Trakt.Code code = trakt.start();
+            String site = code.url.replaceFirst("^https?://", "");
+            main.post(() -> {
+                v.setText(code.userCode);
+                v.setTypeface(Ui.MEDIUM);
+                about.setText("On your phone, open " + site + " and enter this code.");
+            });
+            while (signIn == Thread.currentThread() && System.currentTimeMillis() < code.expiresAtMs) {
+                Thread.sleep(code.intervalS * 1000L);
+                if (trakt.poll(code)) {
+                    main.post(() -> done(v, about, "Connected"));
+                    return;
+                }
+            }
+            main.post(() -> done(v, about, "Code expired · OK for a new one"));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            Log.w("Slick", "Trakt sign-in failed", e);
+            main.post(() -> done(v, about, "Can't reach Trakt · OK to try again"));
+        }
+    }
+
+    private void done(TextView v, TextView about, String result) {
+        signIn = null;
+        v.setText(result);
+        v.setTypeface(Ui.REGULAR);
+        about.setText(TRAKT_ABOUT);
+    }
+
+    @Override
+    protected void onDestroy() {
+        Thread t = signIn;
+        signIn = null;
+        if (t != null) t.interrupt();
+        super.onDestroy();
     }
 
     /** A row that opens another screen. */

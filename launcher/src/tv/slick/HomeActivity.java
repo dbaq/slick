@@ -221,7 +221,26 @@ public class HomeActivity extends Activity {
             group.add(p);
         }
         if (hero) enterHero();
-        else onTileFocused(lastTile);
+        else if (!leadWithNewSeason()) onTileFocused(lastTile);
+    }
+
+    /**
+     * A new season that just came out opens the home screen, whichever app the dock was on: once per show
+     * per day. True when it did.
+     */
+    private boolean leadWithNewSeason() {
+        for (Pick p : picks) {
+            if (!p.lead || !prefs.leadToday(p)) continue;
+            for (View tile : tiles) {
+                if (!p.service.pkg.equals(tile.getTag())) continue;
+                current = p;
+                showing = null;
+                tile.requestFocus();
+                onTileFocused(tile);
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<Pick> picksFor(View tile) {
@@ -302,11 +321,12 @@ public class HomeActivity extends Activity {
             });
         }
         if (hero) {
-            metaText.setText(p.elsewhere.isEmpty() ? p.meta() : p.meta() + " · on " + p.elsewhere);
+            String meta = p.elsewhere.isEmpty() ? p.meta() : p.meta() + " · on " + p.elsewhere;
+            metaText.setText(p.caption.isEmpty() ? meta : p.caption + " · " + meta);
             playLabel.setText((p.service == Pick.Service.STREMIO ? "Watch in " : "Watch on ") + p.service.label);
             overviewText.setText(p.overview);
         } else {
-            metaText.setText(p.facts);
+            metaText.setText(p.caption.isEmpty() ? p.facts : p.caption);
         }
     }
 

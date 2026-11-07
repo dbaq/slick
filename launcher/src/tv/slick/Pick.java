@@ -45,9 +45,14 @@ final class Pick {
     final String link;
     /** One of the season's picks (Christmas, Halloween). */
     final boolean holiday;
+    /** Shown instead of the facts under the dock: "Next: S2 E5", "Season 3 · in 12 days"; "" for none. */
+    final String caption;
+    /** A new season that just came out: Slick opens on it once a day. */
+    final boolean lead;
 
     Pick(boolean series, int tmdbId, String title, String facts, String genres, String overview, String backdrop, String logo,
-            String imdbId, Service service, String elsewhere, String link, boolean holiday) {
+            String imdbId, Service service, String elsewhere, String link, boolean holiday,
+            String caption, boolean lead) {
         this.series = series;
         this.tmdbId = tmdbId;
         this.title = title;
@@ -61,20 +66,30 @@ final class Pick {
         this.elsewhere = elsewhere;
         this.link = link;
         this.holiday = holiday;
+        this.caption = caption;
+        this.lead = lead;
     }
 
     Pick withLink(String link) {
-        return new Pick(series, tmdbId, title, facts, genres, overview, backdrop, logo, imdbId, service, elsewhere, link, holiday);
+        return new Pick(series, tmdbId, title, facts, genres, overview, backdrop, logo, imdbId, service, elsewhere, link, holiday,
+                caption, lead);
     }
 
     Pick asHoliday() {
-        return new Pick(series, tmdbId, title, facts, genres, overview, backdrop, logo, imdbId, service, elsewhere, link, true);
+        return new Pick(series, tmdbId, title, facts, genres, overview, backdrop, logo, imdbId, service, elsewhere, link, true,
+                caption, lead);
+    }
+
+    /** One of the account's own picks (Trakt), with what to say about it. */
+    Pick withCaption(String caption, boolean lead) {
+        return new Pick(series, tmdbId, title, facts, genres, overview, backdrop, logo, imdbId, service, elsewhere, link, holiday,
+                caption, lead);
     }
 
     /** The same title in Stremio, for when its service's app isn't on this TV. */
     Pick inStremio() {
         return new Pick(series, tmdbId, title, facts, genres, overview, backdrop, logo, imdbId, Service.STREMIO, service.label,
-                "", holiday);
+                "", holiday, caption, lead);
     }
 
     /** "Series · Animation, Comedy · 2019 · 3 seasons": the facts with the genres after the kind. */
@@ -95,13 +110,13 @@ final class Pick {
                 .put("series", series).put("tmdb", tmdbId).put("title", title).put("facts", facts).put("genres", genres).put("overview", overview)
                 .put("backdrop", backdrop).put("logo", logo).put("imdb", imdbId)
                 .put("service", service.name()).put("elsewhere", elsewhere).put("link", link)
-                .put("holiday", holiday);
+                .put("holiday", holiday).put("caption", caption).put("lead", lead);
     }
 
     static Pick fromJson(JSONObject o) throws JSONException {
         return new Pick(o.getBoolean("series"), o.getInt("tmdb"), o.getString("title"), o.getString("facts"), o.getString("genres"),
                 o.getString("overview"), o.getString("backdrop"), o.getString("logo"), o.getString("imdb"),
                 Service.valueOf(o.getString("service")), o.getString("elsewhere"), o.getString("link"),
-                o.getBoolean("holiday"));
+                o.getBoolean("holiday"), o.getString("caption"), o.getBoolean("lead"));
     }
 }
