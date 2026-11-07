@@ -137,8 +137,8 @@ public class HomeActivity extends Activity {
 
         root.addView(buildClock(), frame(-2, -2, Gravity.TOP | Gravity.START, 64, 36, 0, 0));
         root.addView(buildButtons(), frame(-2, -2, Gravity.TOP | Gravity.END, 0, 44, 64, 0));
-        root.addView(buildInfo(), frame(480, -2, Gravity.BOTTOM | Gravity.START, 64, 0, 0, 180));
-        root.addView(buildDock(), frame(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, 16));
+        root.addView(buildInfo(), frame(480, -2, Gravity.BOTTOM | Gravity.START, 64, 0, 0, 190));
+        root.addView(buildDock(), frame(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, 26));
         if (home != null) {
             panel = new HomePanel(this, home);
             root.addView(panel, frame(400, -2, Gravity.TOP | Gravity.END, 0, 28, 28, 28));
