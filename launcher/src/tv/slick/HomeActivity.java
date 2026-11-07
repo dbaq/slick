@@ -302,13 +302,11 @@ public class HomeActivity extends Activity {
             });
         }
         if (hero) {
-            metaText.setText(p.elsewhere.isEmpty() ? p.meta : p.meta + " · on " + p.elsewhere);
+            metaText.setText(p.elsewhere.isEmpty() ? p.meta() : p.meta() + " · on " + p.elsewhere);
             playLabel.setText((p.service == Pick.Service.STREMIO ? "Watch in " : "Watch on ") + p.service.label);
             overviewText.setText(p.overview);
         } else {
-            String kind = p.holiday && season != null ? season.label + " pick" : "Trending";
-            metaText.setText(p.service == Pick.Service.STREMIO
-                    ? kind + " · " + p.where() : kind + " on " + p.service.label);
+            metaText.setText(p.facts);
         }
     }
 
