@@ -32,6 +32,23 @@ adb shell am start -n tv.slick/.HomeActivity
 
 The permission lets Slick switch its Home guard back on after updates and reboots (Fire OS turns it off).
 
+## Home Assistant
+
+The house button opens a panel of tiles: sound and climate up top, then lights and shortcuts (scripts).
+OK toggles a light (hold OK to dim it) or runs a shortcut; on sound and climate, OK starts adjusting:
+Left/Right change the volume or target temperature, Up/Down the climate mode. Slick only ever controls
+lights, climate, scripts and speaker volume; locks, alarms, garage doors and covers are refused in code.
+
+Add `ha_url` and `ha_token` (a long-lived token of a non-admin Home Assistant user) to
+`launcher/config.properties`, list the TV's devices in a `launcher/home-<room>.devices` file
+(`entity_id=Name` per line, git-ignored), then:
+
+```bash
+sh launcher/home-setup.sh <tv-ip> launcher/home-<room>.devices
+```
+
+The token reaches the TV only over adb, never the APK. Change a TV's devices later in Settings > Home controls.
+
 ## Debloat
 
 `debloat/*.txt` are packages turned off with `pm disable-user` (nothing is uninstalled). Based on

@@ -68,6 +68,10 @@ public class SettingsActivity extends Activity {
         section("Home screen");
         action("Apps on the dock", "Pick up to " + DockActivity.MAX + " apps and their order.", new Intent(this, DockActivity.class));
         // Settings.ACTION_SETTINGS detours through Amazon's home screen, which HomeGuard bounces.
+        if (Home.load(this) != null) {
+            action("Home controls", "Lights, climate and sound on the panel the house button opens.",
+                    new Intent(this, HomeControlsActivity.class));
+        }
         action("Fire TV settings", "Amazon's settings: network, display, sound, remotes and apps.", new Intent().setClassName(
                 "com.amazon.tv.launcher", "com.amazon.tv.launcher.ui.MainSettingsActivity"));
 

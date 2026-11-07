@@ -12,7 +12,7 @@ import android.graphics.drawable.Drawable;
 /** Line icons for the glass buttons, drawn rather than shipped as assets. */
 final class GlyphDrawable extends Drawable {
 
-    enum Kind { SEARCH, WIFI, GEAR }
+    enum Kind { SEARCH, WIFI, GEAR, HOUSE, BULB, SPEAKER, FLAME, SPARK }
 
     private final Kind kind;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -30,6 +30,7 @@ final class GlyphDrawable extends Drawable {
         this.kind = kind;
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeCap(Paint.Cap.ROUND);
+        paint.setStrokeJoin(Paint.Join.ROUND);
     }
 
     void setColor(int color) {
@@ -56,6 +57,55 @@ final class GlyphDrawable extends Drawable {
             c.drawCircle(lx, ly, r, paint);
             float edge = r * 0.7071f;
             c.drawLine(lx + edge, ly + edge, cx + s * 0.34f, cy + s * 0.34f, paint);
+        } else if (kind == Kind.HOUSE) {
+            path.reset();
+            path.moveTo(cx - s * 0.38f, cy - s * 0.02f);
+            path.lineTo(cx, cy - s * 0.36f);
+            path.lineTo(cx + s * 0.38f, cy - s * 0.02f);
+            path.moveTo(cx - s * 0.26f, cy - s * 0.12f);
+            path.lineTo(cx - s * 0.26f, cy + s * 0.32f);
+            path.lineTo(cx + s * 0.26f, cy + s * 0.32f);
+            path.lineTo(cx + s * 0.26f, cy - s * 0.12f);
+            c.drawPath(path, paint);
+        } else if (kind == Kind.BULB) {
+            c.drawCircle(cx, cy - s * 0.08f, s * 0.24f, paint);
+            c.drawLine(cx - s * 0.11f, cy + s * 0.25f, cx + s * 0.11f, cy + s * 0.25f, paint);
+            c.drawLine(cx - s * 0.07f, cy + s * 0.37f, cx + s * 0.07f, cy + s * 0.37f, paint);
+        } else if (kind == Kind.SPEAKER) {
+            path.reset();
+            path.moveTo(cx - s * 0.36f, cy - s * 0.11f);
+            path.lineTo(cx - s * 0.2f, cy - s * 0.11f);
+            path.lineTo(cx, cy - s * 0.3f);
+            path.lineTo(cx, cy + s * 0.3f);
+            path.lineTo(cx - s * 0.2f, cy + s * 0.11f);
+            path.lineTo(cx - s * 0.36f, cy + s * 0.11f);
+            path.close();
+            paint.setStyle(Paint.Style.FILL);
+            c.drawPath(path, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            for (float r : new float[] {s * 0.16f, s * 0.32f}) {
+                oval.set(cx - r, cy - r, cx + r, cy + r);
+                c.drawArc(oval, -45, 90, false, paint);
+            }
+        } else if (kind == Kind.FLAME) {
+            path.reset();
+            path.moveTo(cx, cy - s * 0.4f);
+            path.cubicTo(cx + s * 0.34f, cy - s * 0.04f, cx + s * 0.3f, cy + s * 0.38f, cx, cy + s * 0.38f);
+            path.cubicTo(cx - s * 0.3f, cy + s * 0.38f, cx - s * 0.34f, cy - s * 0.04f, cx, cy - s * 0.4f);
+            c.drawPath(path, paint);
+        } else if (kind == Kind.SPARK) {
+            path.reset();
+            float[][] points = {{0, -0.4f}, {0.1f, -0.1f}, {0.4f, 0}, {0.1f, 0.1f}, {0, 0.4f}, {-0.1f, 0.1f}, {-0.4f, 0}, {-0.1f, -0.1f}};
+            for (int i = 0; i < points.length; i++) {
+                float x = cx + s * points[i][0];
+                float y = cy + s * points[i][1];
+                if (i == 0) path.moveTo(x, y);
+                else path.lineTo(x, y);
+            }
+            path.close();
+            paint.setStyle(Paint.Style.FILL);
+            c.drawPath(path, paint);
+            paint.setStyle(Paint.Style.STROKE);
         } else if (kind == Kind.WIFI) {
             float base = cy + s * 0.30f;
             int full = paint.getAlpha();

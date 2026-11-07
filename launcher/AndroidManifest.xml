@@ -23,7 +23,8 @@
         android:label="Slick"
         android:banner="@drawable/banner"
         android:theme="@style/Home"
-        android:allowBackup="false">
+        android:allowBackup="false"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".HomeActivity"
@@ -52,6 +53,11 @@
             android:exported="false" />
 
         <activity
+            android:name=".HomeControlsActivity"
+            android:screenOrientation="landscape"
+            android:exported="false" />
+
+        <activity
             android:name=".DockActivity"
             android:screenOrientation="landscape"
             android:exported="false" />
@@ -60,6 +66,16 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Home Assistant setup from a computer: only the adb shell holds WRITE_SECURE_SETTINGS to send it. -->
+        <receiver
+            android:name=".HomeSetup"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="tv.slick.SET_HOME" />
             </intent-filter>
         </receiver>
 

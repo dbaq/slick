@@ -11,3 +11,4 @@
 !/debloat/4-apps.txt
 !/debloat/apply.sh
 !/debloat/verify.sh
+/launcher/home-*.devices

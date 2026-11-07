@@ -97,6 +97,12 @@ public class HomeActivity extends Activity {
     /** Pill pagination under the button: where Left/Right are in the picks. */
     private LinearLayout dots;
 
+    /** This TV's Home Assistant (null when it isn't set up), and its panel on the right. */
+    private Home home;
+    private HomePanel panel;
+    private View houseButton;
+    private TextView roomTemperature;
+
     private View wifiButton;
     private final List<View> glassButtons = new ArrayList<>();
     private final List<GlyphDrawable> glassGlyphs = new ArrayList<>();
@@ -119,6 +125,7 @@ public class HomeActivity extends Activity {
         season = prefs.seasonal() ? Season.at(now) : null;
         holidayDay = season != null && season.isFullDay(now);
         dockApps = prefs.dock();
+        home = Home.load(this);
 
         root = new FrameLayout(this);
         root.setClipChildren(false);
@@ -132,6 +139,10 @@ public class HomeActivity extends Activity {
         root.addView(buildButtons(), frame(-2, -2, Gravity.TOP | Gravity.END, 0, 44, 64, 0));
         root.addView(buildInfo(), frame(480, -2, Gravity.BOTTOM | Gravity.START, 64, 0, 0, 204));
         root.addView(buildDock(), frame(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, 40));
+        if (home != null) {
+            panel = new HomePanel(this, home);
+            root.addView(panel, frame(400, -2, Gravity.TOP | Gravity.END, 0, 28, 28, 28));
+        }
 
         setContentView(root);
         lastTile = tiles.get(0);
@@ -153,9 +164,14 @@ public class HomeActivity extends Activity {
     protected void onResume() {
         super.onResume();
         GuardKeeper.ensure(this);
-        if (!prefs.dock().equals(dockApps)) {
+        Home fresh = Home.load(this);
+        if (!prefs.dock().equals(dockApps) || (fresh == null) != (home == null)) {
             recreate();
             return;
+        }
+        if (fresh != null) {
+            home = fresh;
+            panel.setHome(fresh);
         }
         getSystemService(ConnectivityManager.class).registerDefaultNetworkCallback(networkWatch);
         themeCheck();
@@ -165,6 +181,7 @@ public class HomeActivity extends Activity {
 
     @Override
     protected void onPause() {
+        if (panel != null && panel.isOpen()) closePanel();
         handler.removeCallbacks(rotate);
         handler.removeCallbacks(themeCheck);
         getSystemService(ConnectivityManager.class).unregisterNetworkCallback(networkWatch);
@@ -181,7 +198,8 @@ public class HomeActivity extends Activity {
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         // Home has nowhere to go back to; Back from the wide pick returns to the dock.
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if (hero) lastTile.requestFocus();
+            if (panel != null && panel.isOpen()) closePanel();
+            else if (hero) lastTile.requestFocus();
             return true;
         }
         return super.onKeyDown(keyCode, event);
@@ -415,6 +433,7 @@ public class HomeActivity extends Activity {
             loadPicks(true);
         }
         paintGlass(glassButtons.indexOf(wifiButton));
+        if (panel != null) panel.roomTemperature(t -> roomTemperature.setText("  ·  " + t));
         handler.removeCallbacks(themeCheck);
         handler.postDelayed(themeCheck, THEME_CHECK_MS);
     }
@@ -486,23 +505,44 @@ public class HomeActivity extends Activity {
         style(date, 16, REGULAR, 0xCCFFFFFF);
         date.setLetterSpacing(0.03f);
         date.setShadowLayer(dp(8), 0, 0, 0x40000000);
-        box.addView(date, linear(-2, -2, 4, 4, 0, 0));
+        LinearLayout dateRow = new LinearLayout(this);
+        dateRow.setOrientation(LinearLayout.HORIZONTAL);
+        dateRow.addView(date);
+        roomTemperature = new TextView(this);
+        style(roomTemperature, 16, REGULAR, 0xCCFFFFFF);
+        roomTemperature.setLetterSpacing(0.03f);
+        roomTemperature.setShadowLayer(dp(8), 0, 0, 0x40000000);
+        dateRow.addView(roomTemperature);
+        box.addView(dateRow, linear(-2, -2, 4, 4, 0, 0));
         return box;
     }
 
     private View buildButtons() {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.addView(glassButton(GlyphDrawable.Kind.SEARCH, new Intent(this, SearchActivity.class)),
+        if (home != null) {
+            houseButton = glassButton(GlyphDrawable.Kind.HOUSE, () -> panel.open());
+            row.addView(houseButton, linear(44, 44, 0, 0, 12, 0));
+        }
+        row.addView(glassButton(GlyphDrawable.Kind.SEARCH, open(new Intent(this, SearchActivity.class))),
                 linear(44, 44, 0, 0, 0, 0));
-        wifiButton = glassButton(GlyphDrawable.Kind.WIFI, new Intent(Settings.ACTION_WIFI_SETTINGS));
+        wifiButton = glassButton(GlyphDrawable.Kind.WIFI, open(new Intent(Settings.ACTION_WIFI_SETTINGS)));
         row.addView(wifiButton, linear(44, 44, 12, 0, 0, 0));
-        row.addView(glassButton(GlyphDrawable.Kind.GEAR, new Intent(this, SettingsActivity.class)),
+        row.addView(glassButton(GlyphDrawable.Kind.GEAR, open(new Intent(this, SettingsActivity.class))),
                 linear(44, 44, 12, 0, 0, 0));
         return row;
     }
 
-    private View glassButton(GlyphDrawable.Kind kind, Intent target) {
+    private Runnable open(Intent target) {
+        return () -> startActivity(target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+    }
+
+    private void closePanel() {
+        panel.close();
+        houseButton.requestFocus();
+    }
+
+    private View glassButton(GlyphDrawable.Kind kind, Runnable action) {
         FrameLayout b = new FrameLayout(this);
         b.setFocusable(true);
         GradientDrawable bg = new GradientDrawable();
@@ -522,7 +562,7 @@ public class HomeActivity extends Activity {
             v.animate().scaleX(focused ? 1.15f : 1f).scaleY(focused ? 1.15f : 1f)
                     .setInterpolator(ease).setDuration(180).start();
         });
-        b.setOnClickListener(v -> startActivity(target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+        b.setOnClickListener(v -> action.run());
         return b;
     }
 
