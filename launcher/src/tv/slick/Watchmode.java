@@ -3,37 +3,101 @@ package tv.slick;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * The title's own web address in its streaming app (Netflix, Disney+ and Prime Video open those on the
- * title's page), from Watchmode. Two requests per title, the first time only: answers, including
- * "none", are kept on disk.
+ * Two things from Watchmode: the title's own web address in its streaming app (Netflix, Disney+ and Prime
+ * Video open those on the title's page), and what arrived on each service lately. Answers are kept on disk:
+ * links forever (two requests per title, the first time only), arrivals for the day. The free plan's
+ * monthly quota is shared by every TV in the house.
  */
 final class Watchmode {
 
     private static final String API = "https://api.watchmode.com/v1";
+    /** Arrivals are read in windows of this many days: one window fits under the API's 250 rows. */
+    private static final int WINDOW_DAYS = 30;
+    private static final int WINDOWS = 2;
+    private static final int RELEASES_PER_SERVICE = 30;
+    private static final long DAY_MS = 24L * 3600 * 1000;
 
-    private final File cacheFile;
-    private final JSONObject cache;
+    private final File linksFile;
+    private final File releasesFile;
+    private final JSONObject links;
+    /** The day's arrivals, newest first: {source, candidate} where candidate is "movie:id" or "tv:id". */
+    private JSONArray releases;
 
-    Watchmode(File cacheFile) throws IOException, JSONException {
-        this.cacheFile = cacheFile;
-        cache = cacheFile.exists()
-                ? new JSONObject(new String(Files.readAllBytes(cacheFile.toPath()), "UTF-8"))
-                : new JSONObject();
+    Watchmode(File filesDir) throws IOException, JSONException {
+        linksFile = new File(filesDir, "links.json");
+        releasesFile = new File(filesDir, "releases.json");
+        links = linksFile.exists() ? new JSONObject(read(linksFile)) : new JSONObject();
     }
 
     /** "" when Watchmode doesn't know the title on that service: the pick then opens the app. */
     String link(Pick p) throws IOException, JSONException {
         String key = (p.series ? "tv:" : "movie:") + p.tmdbId + ":" + p.service.name();
-        if (cache.has(key)) return cache.getString(key);
+        if (links.has(key)) return links.getString(key);
         String link = lookup(p);
-        cache.put(key, link);
-        Files.write(cacheFile.toPath(), cache.toString().getBytes("UTF-8"));
+        links.put(key, link);
+        Files.write(linksFile.toPath(), links.toString().getBytes("UTF-8"));
         return link;
+    }
+
+    /**
+     * Titles that arrived on {@code service} in the last two months, newest first, as "movie:id" / "tv:id"
+     * (TMDB ids). For Stremio: what arrived on every service that isn't on the dock (HBO Max, Hulu…).
+     */
+    List<String> releases(Pick.Service service) throws IOException, JSONException {
+        JSONArray all = todaysReleases();
+        Set<String> out = new LinkedHashSet<>();
+        for (int i = 0; i < all.length() && out.size() < RELEASES_PER_SERVICE; i++) {
+            JSONObject r = all.getJSONObject(i);
+            Pick.Service from = serviceNamed(r.getString("source"));
+            if (from == service) out.add(r.getString("candidate"));
+        }
+        return new ArrayList<>(out);
+    }
+
+    private JSONArray todaysReleases() throws IOException, JSONException {
+        if (releases != null) return releases;
+        String today = day(System.currentTimeMillis());
+        if (releasesFile.exists()) {
+            JSONObject cached = new JSONObject(read(releasesFile));
+            if (cached.getString("day").equals(today)) return releases = cached.getJSONArray("rows");
+        }
+        JSONArray rows = new JSONArray();
+        long end = System.currentTimeMillis();
+        for (int w = 0; w < WINDOWS; w++, end -= WINDOW_DAYS * DAY_MS) {
+            JSONArray page = get("/releases/?limit=250&start_date=" + day(end - (WINDOW_DAYS - 1) * DAY_MS)
+                    + "&end_date=" + day(end)).getJSONArray("releases");
+            // The API lists oldest first; arrivals should read newest first.
+            for (int i = page.length() - 1; i >= 0; i--) {
+                JSONObject r = page.getJSONObject(i);
+                String type = r.optString("tmdb_type");
+                int id = r.optInt("tmdb_id");
+                if (id == 0 || !(type.equals("movie") || type.equals("tv"))) continue;
+                rows.put(new JSONObject().put("source", r.getString("source_name")).put("candidate", type + ":" + id));
+            }
+        }
+        Files.write(releasesFile.toPath(), new JSONObject().put("day", today).put("rows", rows).toString()
+                .getBytes("UTF-8"));
+        return releases = rows;
+    }
+
+    /** The dock service a Watchmode source stands for; every other source is Stremio's. */
+    private static Pick.Service serviceNamed(String source) {
+        for (Pick.Service s : Pick.Service.values()) {
+            if (s != Pick.Service.STREMIO && s.label.equals(source)) return s;
+        }
+        return Pick.Service.STREMIO;
     }
 
     private static String lookup(Pick p) throws IOException, JSONException {
@@ -50,6 +114,14 @@ final class Watchmode {
             }
         }
         return "";
+    }
+
+    private static String day(long ms) {
+        return new SimpleDateFormat("yyyyMMdd", Locale.US).format(new Date(ms));
+    }
+
+    private static String read(File f) throws IOException {
+        return new String(Files.readAllBytes(f.toPath()), "UTF-8");
     }
 
     private static JSONObject get(String path) throws IOException, JSONException {

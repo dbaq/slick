@@ -21,7 +21,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -240,7 +239,7 @@ public class SearchActivity extends Activity {
         network.execute(() -> {
             String link;
             try {
-                link = new Watchmode(new File(getFilesDir(), "links.json")).link(p);
+                link = new Watchmode(getFilesDir()).link(p);
             } catch (IOException | JSONException e) {
                 // Watchmode down: the app's home is still the right app.
                 Log.w(TAG, "link failed", e);

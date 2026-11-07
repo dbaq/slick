@@ -60,18 +60,22 @@ final class PickStore {
     void load(Audience audience, Season season, boolean holidayDay, Set<String> hidden, Listener listener,
             boolean deliverCached) {
         String when = season == null ? "" : "-" + season.name() + (holidayDay ? "-day" : "");
-        File listFile = new File(filesDir, ("picks-v4-" + audience.name() + when + ".json").toLowerCase());
+        File listFile = new File(filesDir, ("picks-v7-" + audience.name() + when + ".json").toLowerCase());
         network.execute(() -> {
             List<Pick> cached = readList(listFile);
             if (deliverCached && !cached.isEmpty()) main.post(() -> listener.onPicks(cached));
             if (!cached.isEmpty() && System.currentTimeMillis() - listFile.lastModified() < MAX_AGE_MS) return;
             try {
-                List<Pick> fresh = Tmdb.fetchPicks(audience, season, holidayDay, hidden, new Watchmode(new File(filesDir, "links.json")));
+                List<Pick> fresh = Tmdb.fetchPicks(audience, season, holidayDay, hidden, new Watchmode(filesDir));
                 for (Pick p : fresh) {
                     fetchToDisk(backdropUrl(p));
                     if (!p.logo.isEmpty()) fetchToDisk(logoUrl(p));
                 }
                 writeList(listFile, fresh);
+                for (Pick p : fresh) {
+                    Log.i(TAG, "pick " + audience + " | " + p.service.label + " | " + (p.series ? "show " : "movie")
+                            + " | " + p.title + " | " + p.meta);
+                }
                 main.post(() -> listener.onPicks(fresh));
             } catch (IOException | JSONException e) {
                 // Offline or TMDB down: keep showing what we have and try again next time.
