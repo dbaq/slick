@@ -141,7 +141,7 @@ public class HomeActivity extends Activity {
         root.addView(buildDock(), frame(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, 26));
         if (home != null) {
             panel = new HomePanel(this, home);
-            root.addView(panel, frame(400, -2, Gravity.TOP | Gravity.END, 0, 28, 28, 28));
+            root.addView(panel, frame(400, -1, Gravity.END, 0, 28, 28, 28));
         }
 
         setContentView(root);

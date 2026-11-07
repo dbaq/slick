@@ -104,7 +104,7 @@ final class HomePanel extends FrameLayout {
             tiles.add(t);
             (d.kind == Home.Kind.LIGHT ? lights : d.kind == Home.Kind.SCRIPT ? shortcuts : big).add(t);
         }
-        grid(big, 2, 84);
+        grid(big, 2, 88);
         section("Lights", lights);
         section("Shortcuts", shortcuts);
         if (open) refresh();
@@ -220,7 +220,7 @@ final class HomePanel extends FrameLayout {
         TextView label = text(title, 12, 0x8CFFFFFF);
         label.setPadding(dp(2), content.getChildCount() == 0 ? 0 : dp(10), 0, dp(6));
         content.addView(label);
-        grid(group, 3, 64);
+        grid(group, 3, 68);
     }
 
     private void grid(List<Tile> group, int columns, int heightDp) {
