@@ -336,6 +336,9 @@ final class HomePanel extends FrameLayout {
         }
 
         void apply(JSONObject s) {
+            // While adjusting, the local value leads: a refresh can land between two presses, before Home
+            // Assistant caught up, and must not pull the value back.
+            if (adjusting == this) return;
             try {
                 known = true;
                 state = s.getString("state");
@@ -366,8 +369,7 @@ final class HomePanel extends FrameLayout {
             } catch (JSONException e) {
                 throw new IllegalStateException(device.entityId + " state unreadable", e);
             }
-            // While adjusting, the local value leads: a refresh can arrive before Home Assistant caught up.
-            if (adjusting != this) render();
+            render();
         }
 
         private void press() {
