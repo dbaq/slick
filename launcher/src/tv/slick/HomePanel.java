@@ -62,7 +62,7 @@ final class HomePanel extends FrameLayout {
         this.activity = activity;
         GradientDrawable bg = new GradientDrawable();
         bg.setCornerRadius(dp(16));
-        bg.setColor(0xF0121418);
+        bg.setColor(0xFF121418);
         setBackground(bg);
         setVisibility(GONE);
 
@@ -104,7 +104,7 @@ final class HomePanel extends FrameLayout {
             tiles.add(t);
             (d.kind == Home.Kind.LIGHT ? lights : d.kind == Home.Kind.SCRIPT ? shortcuts : big).add(t);
         }
-        grid(big, 2, 92);
+        grid(big, 2, 84);
         section("Lights", lights);
         section("Shortcuts", shortcuts);
         if (open) refresh();
@@ -220,7 +220,7 @@ final class HomePanel extends FrameLayout {
         TextView label = text(title, 12, 0x8CFFFFFF);
         label.setPadding(dp(2), content.getChildCount() == 0 ? 0 : dp(10), 0, dp(6));
         content.addView(label);
-        grid(group, 3, 74);
+        grid(group, 3, 64);
     }
 
     private void grid(List<Tile> group, int columns, int heightDp) {
