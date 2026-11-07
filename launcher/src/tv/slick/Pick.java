@@ -67,6 +67,12 @@ final class Pick {
         return new Pick(series, tmdbId, title, meta, overview, backdrop, logo, imdbId, service, elsewhere, link, true);
     }
 
+    /** The same title in Stremio, for when its service's app isn't on this TV. */
+    Pick inStremio() {
+        return new Pick(series, tmdbId, title, meta, overview, backdrop, logo, imdbId, Service.STREMIO, service.label,
+                "", holiday);
+    }
+
     String where() {
         if (service != Service.STREMIO) return service.label;
         return elsewhere.isEmpty() ? "Stremio" : elsewhere + " · Stremio";

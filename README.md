@@ -6,6 +6,7 @@ An Apple TV-style home screen for Fire TV sticks, plus the lists used to strip A
 - The backdrop shows what's trending on the focused app (TMDB); Up opens it wide, OK plays it in its app
   (Watchmode title links), and anything not on Netflix, Disney+ or Prime Video opens in Stremio
 - Picks per audience (Kids, Family, Adults) on a day/evening schedule
+- Search any movie or show (TMDB); titles for the current audience come first, and OK opens it like a pick
 - Light glass by day, dark after sunset; clock, Wi-Fi strength, Settings
 - Fire OS won't hand Home to another app, so an accessibility service sends Amazon's home screen back to Slick
 

@@ -89,6 +89,11 @@ final class PickStore {
         image(logoUrl(p), false, cb);
     }
 
+    /** A small backdrop for search's tiles: a quarter of the pixels, no shade. */
+    void thumb(Pick p, ImageCallback cb) {
+        image(IMAGES + "w780" + p.backdrop, false, cb);
+    }
+
     private static String backdropUrl(Pick p) {
         return IMAGES + "w1280" + p.backdrop;
     }
@@ -105,7 +110,9 @@ final class PickStore {
         }
         decoder.execute(() -> {
             File f = fileFor(url);
-            Bitmap decoded = f.exists() ? BitmapFactory.decodeFile(f.getPath()) : null;
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = url.contains("/w780/") ? 2 : 1;
+            Bitmap decoded = f.exists() ? BitmapFactory.decodeFile(f.getPath(), options) : null;
             if (decoded == null) {
                 network.execute(() -> {
                     try {

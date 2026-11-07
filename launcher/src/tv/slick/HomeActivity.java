@@ -16,7 +16,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
@@ -296,21 +295,7 @@ public class HomeActivity extends Activity {
     }
 
     private void open(Pick p) {
-        Intent intent;
-        if (p.service == Pick.Service.STREMIO) {
-            intent = new Intent(Intent.ACTION_VIEW,
-                    Uri.parse("stremio:///detail/" + (p.series ? "series" : "movie") + "/" + p.imdbId))
-                    .setPackage(p.service.pkg);
-        } else if (p.link.isEmpty()) {
-            intent = launchIntent(p.service.pkg);
-        } else {
-            // A fresh task: an app already running ignores a link handed to its old one.
-            intent = new Intent(Intent.ACTION_VIEW, Uri.parse(p.link)).setPackage(p.service.pkg)
-                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            // Netflix's TV app only follows links that say they come from a partner launcher.
-            if (p.service == Pick.Service.NETFLIX) intent.putExtra("source", "30");
-        }
-        startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        startActivity(Titles.intent(getPackageManager(), p));
     }
 
     // ---- Hero (the wide pick) ----------------------------------------------------------------------
@@ -508,8 +493,10 @@ public class HomeActivity extends Activity {
     private View buildButtons() {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
+        row.addView(glassButton(GlyphDrawable.Kind.SEARCH, new Intent(this, SearchActivity.class)),
+                linear(44, 44, 0, 0, 0, 0));
         wifiButton = glassButton(GlyphDrawable.Kind.WIFI, new Intent(Settings.ACTION_WIFI_SETTINGS));
-        row.addView(wifiButton, linear(44, 44, 0, 0, 0, 0));
+        row.addView(wifiButton, linear(44, 44, 12, 0, 0, 0));
         row.addView(glassButton(GlyphDrawable.Kind.GEAR, new Intent(this, SettingsActivity.class)),
                 linear(44, 44, 12, 0, 0, 0));
         return row;
@@ -652,9 +639,7 @@ public class HomeActivity extends Activity {
     }
 
     private Intent launchIntent(String pkg) {
-        PackageManager pm = getPackageManager();
-        Intent launch = pm.getLeanbackLaunchIntentForPackage(pkg);
-        return launch != null ? launch : pm.getLaunchIntentForPackage(pkg);
+        return Titles.launchIntent(getPackageManager(), pkg);
     }
 
     /** The app's TV banner (YouTube's look for SmartTube), or null when it ships none. */

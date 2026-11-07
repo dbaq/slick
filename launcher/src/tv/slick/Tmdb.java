@@ -14,6 +14,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -26,6 +29,8 @@ import org.json.JSONObject;
 final class Tmdb {
 
     static final int PER_SERVICE = 8;
+    private static final int SEARCH_RESULTS = 16;
+    private static final int SEARCH_THREADS = 6;
     private static final String API = "https://api.themoviedb.org/3";
     /** TMDB's watch-provider ids (US), in the same order as the services they stand for. */
     private static final int[] PROVIDERS = {8, 337, 9};
@@ -111,6 +116,48 @@ final class Tmdb {
         List<Pick> linked = new ArrayList<>();
         for (Pick p : picks) linked.add(p.service == Pick.Service.STREMIO ? p : p.withLink(links.link(p)));
         return linked;
+    }
+
+    /**
+     * Movies and shows matching {@code query}, best match first, with the titles this audience may watch
+     * ahead of the rest (nothing is left out). No quality bar: a search is for something you already want.
+     */
+    static List<Pick> search(String query, Audience audience) throws IOException, JSONException {
+        JSONArray results = get("/search/multi?include_adult=false&language=en-US&query="
+                + java.net.URLEncoder.encode(query, "UTF-8")).getJSONArray("results");
+        List<String> found = new ArrayList<>();
+        for (int i = 0; i < results.length() && found.size() < SEARCH_RESULTS; i++) {
+            JSONObject r = results.getJSONObject(i);
+            String type = r.optString("media_type");
+            if (type.equals("movie") || type.equals("tv")) found.add(type + ":" + r.getInt("id"));
+        }
+        ExecutorService pool = Executors.newFixedThreadPool(SEARCH_THREADS);
+        try {
+            List<Future<JSONObject>> details = new ArrayList<>();
+            for (String candidate : found) details.add(pool.submit(() -> fetchDetails(candidate)));
+            List<Pick> forAudience = new ArrayList<>();
+            List<Pick> others = new ArrayList<>();
+            for (int i = 0; i < found.size(); i++) {
+                boolean series = found.get(i).startsWith("tv:");
+                JSONObject d = details.get(i).get();
+                if (d.isNull("backdrop_path")) continue;
+                Pick pick = toPick(series, d);
+                if (pick == null) continue;
+                boolean allowed = audience.allows(series, rating(series, d), genreIds(d));
+                (allowed ? forAudience : others).add(pick);
+            }
+            forAudience.addAll(others);
+            return forAudience;
+        } catch (java.util.concurrent.ExecutionException e) {
+            if (e.getCause() instanceof IOException) throw (IOException) e.getCause();
+            if (e.getCause() instanceof JSONException) throw (JSONException) e.getCause();
+            throw new IllegalStateException(e.getCause());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("search interrupted", e);
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     /** Any bucket of this kind still open? Cheap check before spending a details request. */
@@ -220,17 +267,27 @@ final class Tmdb {
      */
     private static Pick details(String candidate, Audience audience, Kind kind) throws IOException, JSONException {
         boolean series = candidate.startsWith("tv:");
-        int id = Integer.parseInt(candidate.substring(candidate.indexOf(':') + 1));
-        JSONObject d = get("/" + (series ? "tv" : "movie") + "/" + id
-                + "?language=en-US&append_to_response=watch/providers,external_ids,images,"
-                + (series ? "content_ratings" : "release_dates") + "&include_image_language=en,null");
+        JSONObject d = fetchDetails(candidate);
         if (d.isNull("backdrop_path")) return null;
         if (!d.optString("original_language").equals("en")) return null;
         if (!series && d.optInt("runtime") < MIN_RUNTIME) return null;
         Set<Integer> genres = genreIds(d);
         if (!goodEnough(series, d, genres)) return null;
         if (!audience.allows(series, rating(series, d), genres)) return null;
+        return toPick(series, d);
+    }
 
+    private static JSONObject fetchDetails(String candidate) throws IOException, JSONException {
+        boolean series = candidate.startsWith("tv:");
+        int id = Integer.parseInt(candidate.substring(candidate.indexOf(':') + 1));
+        return get("/" + (series ? "tv" : "movie") + "/" + id
+                + "?language=en-US&append_to_response=watch/providers,external_ids,images,"
+                + (series ? "content_ratings" : "release_dates") + "&include_image_language=en,null");
+    }
+
+    /** The title and where it opens, or null when there's nowhere: no dock service and no IMDb id for Stremio. */
+    private static Pick toPick(boolean series, JSONObject d) throws JSONException {
+        int id = d.getInt("id");
         String imdb = series ? d.getJSONObject("external_ids").optString("imdb_id") : d.optString("imdb_id");
         if (imdb.equals("null")) imdb = "";
 
