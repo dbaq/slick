@@ -44,30 +44,31 @@ public class SettingsActivity extends Activity {
         page.addView(scroll);
 
         section("Picks");
-        choice("Daytime", () -> prefs.dayAudience().label,
+        choice("Daytime", "Who the picks are for during the day.", () -> prefs.dayAudience().label,
                 d -> prefs.setDayAudience(prefs.dayAudience().next(d)));
-        choice("Evening", () -> prefs.eveningAudience().label,
+        choice("Evening", "Who the picks are for in the evening, between the two times below.", () -> prefs.eveningAudience().label,
                 d -> prefs.setEveningAudience(prefs.eveningAudience().next(d)));
-        choice("Evening starts", () -> Prefs.clock(prefs.eveningStart()),
+        choice("Evening starts", "When the evening picks take over.", () -> Prefs.clock(prefs.eveningStart()),
                 d -> prefs.setEveningStart(wrap(prefs.eveningStart() + d * HALF_HOUR)));
-        choice("Evening ends", () -> Prefs.clock(prefs.eveningEnd()),
+        choice("Evening ends", "When the daytime picks come back.", () -> Prefs.clock(prefs.eveningEnd()),
                 d -> prefs.setEveningEnd(wrap(prefs.eveningEnd() + d * HALF_HOUR)));
-        choice("Picks change every", () -> prefs.rotateSeconds() == 0 ? "Off" : prefs.rotateSeconds() + " seconds",
+        choice("Picks change every", "How long each pick stays on screen before the next one. Off keeps it until you move.",
+                () -> prefs.rotateSeconds() == 0 ? "Off" : prefs.rotateSeconds() + " seconds",
                 d -> prefs.setRotateSeconds(nextRotation(prefs.rotateSeconds(), d)));
-        choice("Seasonal picks", () -> prefs.seasonal() ? "On" : "Off",
+        choice("Seasonal picks", "Halloween and Christmas titles for the " + Season.LEAD_DAYS + " days before each.",
+                () -> prefs.seasonal() ? "On" : "Off",
                 d -> prefs.setSeasonal(!prefs.seasonal()));
         hiddenRow();
         note("Kids: G movies, TV-Y and TV-G shows. Family: up to PG and TV-PG. "
-                + "Adults: every rating, without titles made for little kids. "
-                + "Seasonal: Halloween and Christmas picks for the " + Season.LEAD_DAYS + " days before each.");
+                + "Adults: every rating, without titles made for little kids.");
 
         section("Look");
-        choice("Theme", () -> label(prefs.theme()), d -> prefs.setTheme(next(prefs.theme(), d)));
+        choice("Theme", "Auto is light by day and dark after sunset.", () -> label(prefs.theme()), d -> prefs.setTheme(next(prefs.theme(), d)));
 
         section("Home screen");
-        action("Apps on the dock", new Intent(this, DockActivity.class));
+        action("Apps on the dock", "Pick up to " + DockActivity.MAX + " apps and their order.", new Intent(this, DockActivity.class));
         // Settings.ACTION_SETTINGS detours through Amazon's home screen, which HomeGuard bounces.
-        action("Fire TV settings", new Intent().setClassName(
+        action("Fire TV settings", "Amazon's settings: network, display, sound, remotes and apps.", new Intent().setClassName(
                 "com.amazon.tv.launcher", "com.amazon.tv.launcher.ui.MainSettingsActivity"));
 
         setContentView(page);
@@ -88,8 +89,8 @@ public class SettingsActivity extends Activity {
     }
 
     /** A row whose value Left/Right changes. */
-    private void choice(String label, Supplier<String> value, IntConsumer change) {
-        LinearLayout row = row(label);
+    private void choice(String label, String description, Supplier<String> value, IntConsumer change) {
+        LinearLayout row = row(label, description);
         TextView v = Ui.text(this, "", 17, Ui.REGULAR, Color.WHITE);
         Runnable refresh = () -> v.setText("‹  " + value.get() + "  ›");
         refresh.run();
@@ -111,11 +112,11 @@ public class SettingsActivity extends Activity {
 
     /** Titles hidden with "Hold OK"; OK brings them all back. */
     private void hiddenRow() {
-        LinearLayout row = row("Hidden titles");
+        LinearLayout row = row("Hidden titles", "Titles you hid by holding OK on a pick. OK here brings them all back.");
         TextView v = Ui.text(this, "", 17, Ui.REGULAR, 0x99FFFFFF);
         Runnable refresh = () -> {
             int n = prefs.hidden().size();
-            v.setText(n == 0 ? "None" : n + "  ·  OK shows them again");
+            v.setText(n == 0 ? "None" : String.valueOf(n));
         };
         refresh.run();
         row.addView(v);
@@ -127,22 +128,28 @@ public class SettingsActivity extends Activity {
     }
 
     /** A row that opens another screen. */
-    private void action(String label, Intent target) {
-        LinearLayout row = row(label);
+    private void action(String label, String description, Intent target) {
+        LinearLayout row = row(label, description);
         TextView chevron = Ui.text(this, "›", 20, Ui.REGULAR, 0x99FFFFFF);
         row.addView(chevron);
         row.setOnClickListener(view -> startActivity(target));
         focusStyle(row, chevron);
     }
 
-    private LinearLayout row(String label) {
+    /** A row with its name, a short description under it, and room for a value on the right. */
+    private LinearLayout row(String label, String description) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setFocusable(true);
         row.setPadding(Ui.dp(this, 20), Ui.dp(this, 14), Ui.dp(this, 20), Ui.dp(this, 14));
-        TextView name = Ui.text(this, label, 17, Ui.REGULAR, Color.WHITE);
-        row.addView(name, new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.addView(Ui.text(this, label, 17, Ui.REGULAR, Color.WHITE));
+        TextView about = Ui.text(this, description, 13, Ui.REGULAR, 0x80FFFFFF);
+        about.setPadding(0, Ui.dp(this, 2), Ui.dp(this, 24), 0);
+        text.addView(about);
+        row.addView(text, new LinearLayout.LayoutParams(0, -2, 1f));
         GradientDrawable bg = new GradientDrawable();
         bg.setCornerRadius(Ui.dp(this, 14));
         bg.setColor(Color.TRANSPARENT);
@@ -155,11 +162,14 @@ public class SettingsActivity extends Activity {
 
     /** Focused rows turn solid white with dark text, like the home screen's buttons. */
     private void focusStyle(LinearLayout row, TextView value) {
-        TextView name = (TextView) row.getChildAt(0);
+        LinearLayout text = (LinearLayout) row.getChildAt(0);
+        TextView name = (TextView) text.getChildAt(0);
+        TextView about = (TextView) text.getChildAt(1);
         int valueColor = value.getCurrentTextColor();
         row.setOnFocusChangeListener((v, focused) -> {
             ((GradientDrawable) v.getBackground()).setColor(focused ? Color.WHITE : Color.TRANSPARENT);
             name.setTextColor(focused ? 0xFF111111 : Color.WHITE);
+            about.setTextColor(focused ? 0x99111111 : 0x80FFFFFF);
             value.setTextColor(focused ? 0xFF111111 : valueColor);
         });
     }
