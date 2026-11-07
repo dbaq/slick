@@ -35,6 +35,8 @@ final class HomePanel extends FrameLayout {
     private static final long REFRESH_MS = 5000;
     private static final double VOLUME_STEP = 0.02;
     private static final int DIM_STEP = 10;
+    /** Climate units drop a command that comes within about a second of the last one (measured: 1s drops, 2s works). */
+    private static final long CLIMATE_GAP_MS = 2000;
 
     private static final int OFF_BG = 0x1AFFFFFF;
     private static final int ON_BG = 0x40FFFFFF;
@@ -200,7 +202,15 @@ final class HomePanel extends FrameLayout {
         Home h = home;
         network.execute(() -> {
             try {
+                if (t.device.kind == Home.Kind.CLIMATE) {
+                    long wait = t.lastClimateCall + CLIMATE_GAP_MS - System.currentTimeMillis();
+                    if (wait > 0) Thread.sleep(wait);
+                    t.lastClimateCall = System.currentTimeMillis();
+                }
+                Log.i("Slick", "Home Assistant " + t.device.entityId + " " + service + " " + data);
                 h.call(t.device, service, data);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             } catch (IOException | JSONException e) {
                 Log.w("Slick", "Home Assistant call failed", e);
                 main.post(this::showError);
@@ -291,6 +301,10 @@ final class HomePanel extends FrameLayout {
         private int maxTemp = 90;
         private final List<String> modes = new ArrayList<>();
         private boolean flashDone;
+        /** When the network thread last sent this climate unit a command. */
+        volatile long lastClimateCall;
+        /** A climate target picked with Left/Right, sent when OK confirms it. */
+        private boolean targetChanged;
 
         Tile(Home.Device device) {
             this.device = device;
@@ -320,7 +334,10 @@ final class HomePanel extends FrameLayout {
             if (big) view.addView(detail);
 
             view.setOnFocusChangeListener((v, focused) -> {
-                if (!focused && adjusting == this) adjusting = null;
+                if (!focused && adjusting == this) {
+                    adjusting = null;
+                    targetChanged = false;
+                }
                 render();
             });
             view.setOnClickListener(v -> press());
@@ -403,11 +420,11 @@ final class HomePanel extends FrameLayout {
                 case KeyEvent.KEYCODE_ENTER:
                     if (!down) {
                         if (swallowNextOkUp) swallowNextOkUp = false;
-                        else stopAdjusting();
+                        else stopAdjusting(true);
                     }
                     return true;
                 case KeyEvent.KEYCODE_BACK:
-                    if (down) stopAdjusting();
+                    if (down) stopAdjusting(false);
                     return true;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
@@ -422,7 +439,16 @@ final class HomePanel extends FrameLayout {
             }
         }
 
-        private void stopAdjusting() {
+        /** OK confirms a new climate target; Back drops it and the next refresh shows the real one. */
+        private void stopAdjusting(boolean confirm) {
+            if (targetChanged && confirm) {
+                try {
+                    call(this, "set_temperature", new JSONObject().put("temperature", target));
+                } catch (JSONException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+            targetChanged = false;
             adjusting = null;
             swallowNextOkUp = false;
             render();
@@ -437,7 +463,7 @@ final class HomePanel extends FrameLayout {
                         break;
                     case CLIMATE:
                         target = clamp(target + delta, minTemp, maxTemp);
-                        call(this, "set_temperature", new JSONObject().put("temperature", target));
+                        targetChanged = true;
                         break;
                     case LIGHT:
                         int from = isOn() ? brightness : 0;
