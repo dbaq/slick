@@ -56,17 +56,24 @@ final class PickStore {
         imageDir.mkdirs();
     }
 
-    /** Delivers the cached picks (when asked to), then fresh ones when the cache is older than an hour. */
+    private static final String LIST_PREFIX = "picks-v13-";
+
+    /**
+     * Delivers the cached picks (when asked to), then fresh ones when the cache is older than an hour. With
+     * no cache for exactly this (a new season, Trakt just connected), the newest list kept for the same
+     * audience shows meanwhile, so the home screen never starts empty.
+     */
     void load(Audience audience, Season season, boolean holidayDay, Set<String> hidden, Listener listener,
             boolean deliverCached) {
         String when = season == null ? "" : "-" + season.name() + (holidayDay ? "-day" : "");
         Trakt trakt = new Trakt(filesDir);
         // Trakt shapes Adults picks only: the account holds the kids' viewing too.
         boolean personal = audience == Audience.ADULTS && trakt.connected();
-        File listFile = new File(filesDir, ("picks-v12-" + audience.name() + when + (personal ? "-trakt" : "") + ".json").toLowerCase());
+        File listFile = new File(filesDir, (LIST_PREFIX + audience.name() + when + (personal ? "-trakt" : "") + ".json").toLowerCase());
         network.execute(() -> {
             List<Pick> cached = readList(listFile);
-            if (deliverCached && !cached.isEmpty()) main.post(() -> listener.onPicks(cached));
+            List<Pick> meanwhile = cached.isEmpty() ? readList(newestFor(audience)) : cached;
+            if (deliverCached && !meanwhile.isEmpty()) main.post(() -> listener.onPicks(meanwhile));
             if (!cached.isEmpty() && System.currentTimeMillis() - listFile.lastModified() < MAX_AGE_MS) return;
             try {
                 List<Pick> fresh = Tmdb.fetchPicks(audience, season, holidayDay, hidden, new Watchmode(filesDir),
@@ -155,8 +162,23 @@ final class PickStore {
         return new File(imageDir, url.substring(IMAGES.length()).replace('/', '_'));
     }
 
+    /**
+     * The most recently saved list for this audience, any season, Trakt state or cache version (one that no
+     * longer reads simply comes back empty); null when there's none.
+     */
+    private File newestFor(Audience audience) {
+        String pattern = "picks-v\\d+-" + audience.name().toLowerCase() + "(-.*)?\\.json";
+        File newest = null;
+        File[] files = filesDir.listFiles();
+        for (File f : files == null ? new File[0] : files) {
+            if (!f.getName().matches(pattern)) continue;
+            if (newest == null || f.lastModified() > newest.lastModified()) newest = f;
+        }
+        return newest;
+    }
+
     private static List<Pick> readList(File listFile) {
-        if (!listFile.exists()) return Collections.emptyList();
+        if (listFile == null || !listFile.exists()) return Collections.emptyList();
         try {
             JSONArray a = new JSONArray(new String(Files.readAllBytes(listFile.toPath()), "UTF-8"));
             List<Pick> picks = new ArrayList<>();

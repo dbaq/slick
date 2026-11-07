@@ -158,6 +158,9 @@ public class HomeActivity extends Activity {
         store.load(forAudience, forSeason, forDay, prefs.hidden(), fresh -> {
             if (forAudience == audience && forSeason == season && forDay == holidayDay) onPicks(fresh);
         }, deliverCached);
+        // Keep the other half of the day ready too, so the switch at evening (or morning) is instant.
+        Audience other = forAudience == prefs.dayAudience() ? prefs.eveningAudience() : prefs.dayAudience();
+        if (other != forAudience) store.load(other, forSeason, forDay, prefs.hidden(), fresh -> { }, false);
     }
 
     @Override

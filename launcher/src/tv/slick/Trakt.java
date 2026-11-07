@@ -217,8 +217,24 @@ final class Trakt {
             JSONObject w = wl.getJSONObject(i);
             String type = w.getString("type");
             if (!type.equals("movie") && !type.equals("show")) continue;
-            int tmdb = tmdbId(w.getJSONObject(type));
-            if (tmdb > 0) watchlist.add((type.equals("show") ? "tv:" : "movie:") + tmdb);
+            JSONObject item = w.getJSONObject(type);
+            int tmdb = tmdbId(item);
+            if (tmdb <= 0) continue;
+            String key = (type.equals("show") ? "tv:" : "movie:") + tmdb;
+            if (!watched.contains(key)) {
+                watchlist.add(key);
+                continue;
+            }
+            // Seen already: a movie is done; a show only comes back when episodes are left, as its next one.
+            if (type.equals("movie")) continue;
+            JSONObject p = new JSONObject(get("/shows/" + item.getJSONObject("ids").getInt("trakt")
+                    + "/progress/watched?hidden=false&specials=false", token));
+            JSONObject ne = p.optJSONObject("next_episode");
+            boolean listed = false;
+            for (Next n : next) listed |= n.tmdbId == tmdb;
+            if (ne != null && p.getInt("completed") < p.getInt("aired") && !listed) {
+                next.add(new Next(tmdb, ne.getInt("season"), ne.getInt("number")));
+            }
         }
 
         List<String> recommended = new ArrayList<>();
