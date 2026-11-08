@@ -5,4 +5,6 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:notificationTimeout="0"
     android:canRetrieveWindowContent="false"
+    android:canRequestFilterKeyEvents="true"
+    android:accessibilityFlags="flagRequestFilterKeyEvents"
     android:description="@string/guard_description" />

@@ -291,7 +291,7 @@ public class SettingsActivity extends Activity {
         static final Typeface REGULAR = Typeface.create("sans-serif", Typeface.NORMAL);
         static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
 
-        static TextView text(Activity a, String s, int sp, Typeface face, int color) {
+        static TextView text(android.content.Context a, String s, int sp, Typeface face, int color) {
             TextView t = new TextView(a);
             t.setText(s);
             t.setTextSize(sp);
@@ -300,7 +300,7 @@ public class SettingsActivity extends Activity {
             return t;
         }
 
-        static int dp(Activity a, int v) {
+        static int dp(android.content.Context a, int v) {
             return Math.round(v * a.getResources().getDisplayMetrics().density);
         }
     }

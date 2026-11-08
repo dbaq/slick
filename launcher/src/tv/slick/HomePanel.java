@@ -1,6 +1,6 @@
 package tv.slick;
 
-import android.app.Activity;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
@@ -53,7 +53,7 @@ final class HomePanel extends FrameLayout {
     private static final int GREEN = 0xFF30D158;
     private static final int PURPLE = 0xFFBF5AF2;
 
-    private final Activity activity;
+    private final Context activity;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final java.util.concurrent.ExecutorService network = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final DecelerateInterpolator ease = new DecelerateInterpolator(2f);
@@ -67,7 +67,7 @@ final class HomePanel extends FrameLayout {
     private boolean swallowNextOkUp;
     private boolean open;
 
-    HomePanel(Activity activity, Home home) {
+    HomePanel(Context activity, Home home) {
         super(activity);
         this.activity = activity;
         GradientDrawable bg = new GradientDrawable();
