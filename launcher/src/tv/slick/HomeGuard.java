@@ -16,7 +16,7 @@ import android.widget.FrameLayout;
  * The guard also sees every remote press first, in any app: ☰ (Menu) opens the Home Assistant panel on
  * top of whatever is playing. The panel's window never takes focus, so the app underneath keeps playing;
  * while it's open the guard hands the remote's presses to the panel instead of the app. It also runs the
- * {@link Doorbell} card, which Back puts away.
+ * {@link Doorbell} card, which takes OK, Left/Right and Back while it's up.
  */
 public class HomeGuard extends AccessibilityService {
 
@@ -28,8 +28,6 @@ public class HomeGuard extends AccessibilityService {
     private FrameLayout overlay;
     private HomePanel panel;
     private Doorbell doorbell;
-    /** The Back that dismissed the doorbell card: its release mustn't reach the app either. */
-    private boolean swallowBackUp;
 
     /**
      * Connecting happens at boot, after Slick is updated, and when the guard is switched on: each time
@@ -59,17 +57,7 @@ public class HomeGuard extends AccessibilityService {
             }
             return true;
         }
-        if (!open && event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN && doorbell != null && doorbell.isShowing()) {
-                doorbell.dismiss();
-                swallowBackUp = true;
-                return true;
-            }
-            if (event.getAction() == KeyEvent.ACTION_UP && swallowBackUp) {
-                swallowBackUp = false;
-                return true;
-            }
-        }
+        if (!open && doorbell != null && doorbell.onKey(event)) return true;
         if (!open) return false;
         // Home leaves the panel behind; everything else belongs to the panel while it's up.
         if (event.getKeyCode() == KeyEvent.KEYCODE_HOME) {

@@ -16,6 +16,7 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewOutlineProvider;
 import android.view.WindowManager;
@@ -32,7 +33,10 @@ import org.json.JSONException;
 /**
  * When the doorbell rings, a card in the top-right corner shows its cameras over whatever is playing, for
  * {@link #SHOW_MS}. Watches the ring sensor once a second while the screen is on; the pictures refresh twice
- * a second while the card is up. The card's window never takes focus, so playback carries on. To try it
+ * a second while the card is up. The card's window never takes focus, so playback carries on. While it's
+ * up, OK enlarges it to the middle of the screen, the cameras side by side as big as fit and from their
+ * sharp streams when they have one; OK shrinks it back and Back closes it. Enlarged, it stays until closed.
+ * To try it
  * without a ring: adb shell am broadcast -a tv.slick.RING (only adb can send it).
  */
 final class Doorbell {
@@ -41,7 +45,8 @@ final class Doorbell {
     private static final long WATCH_MS = 1000;
     private static final long FRAME_MS = 500;
     private static final long SHOW_MS = 45_000;
-    private static final int PICTURE_HEIGHT_DP = 180;
+    private static final int PICTURE_HEIGHT_DP = 120;
+    private static final int ENLARGED_MAX_HEIGHT_DP = 420;
 
     private final Context context;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -52,7 +57,13 @@ final class Doorbell {
     private boolean ringing;
     private LinearLayout card;
     private TextView when;
+    private TextView hint;
     private final List<ImageView> pictures = new ArrayList<>();
+    /** Each camera's width over height, once its first picture has come in. */
+    private final List<Float> shapes = new ArrayList<>();
+    private boolean enlarged;
+    /** The press that acted on the card: its release mustn't reach the app either. */
+    private int swallowUp = KeyEvent.KEYCODE_UNKNOWN;
 
     Doorbell(Context context) {
         this.context = context;
@@ -70,14 +81,40 @@ final class Doorbell {
         }, new IntentFilter("tv.slick.RING"), android.Manifest.permission.WRITE_SECURE_SETTINGS, main);
     }
 
-    boolean isShowing() {
-        return card != null;
+    /** The remote while the card is up: OK and Back belong to the card; the rest to the app. */
+    boolean onKey(KeyEvent event) {
+        int code = event.getKeyCode();
+        boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
+        if (!down) {
+            if (code != swallowUp) return false;
+            swallowUp = KeyEvent.KEYCODE_UNKNOWN;
+            return true;
+        }
+        if (card == null) return false;
+        switch (code) {
+            case KeyEvent.KEYCODE_BACK:
+                main.removeCallbacks(hide);
+                hide();
+                break;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+                if (event.getRepeatCount() == 0) setEnlarged(!enlarged);
+                break;
+            default:
+                return false;
+        }
+        swallowUp = code;
+        return true;
     }
 
-    /** Back on the remote: put the card away before its time is up. */
-    void dismiss() {
+    private void setEnlarged(boolean on) {
+        enlarged = on;
+        // Enlarged, it stays until closed; back in the corner, it gets its time again.
         main.removeCallbacks(hide);
-        hide();
+        if (!on) main.postDelayed(hide, SHOW_MS);
+        layout();
+        network.removeCallbacks(frame);
+        network.post(frame);
     }
 
     // ---- Watching (network thread) -----------------------------------------------------------------
@@ -101,24 +138,28 @@ final class Doorbell {
         Home home = Home.load(context);
         if (home == null) return;
         List<String> cameras = home.doorbell.subList(1, home.doorbell.size());
+        boolean big = enlarged;
+        int heightPx = dp(big ? ENLARGED_MAX_HEIGHT_DP : PICTURE_HEIGHT_DP);
         for (int i = 0; i < cameras.size(); i++) {
+            // Enlarged, the sharp stream when the camera has one.
+            String[] streams = cameras.get(i).split("\\|");
+            String camera = big ? streams[streams.length - 1] : streams[0];
             int at = i;
             try {
-                byte[] jpeg = home.snapshot(cameras.get(i));
-                Bitmap b = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
+                byte[] jpeg = home.snapshot(camera);
+                Bitmap b = decode(jpeg, heightPx);
                 main.post(() -> {
                     if (card == null || at >= pictures.size()) return;
-                    ImageView picture = pictures.get(at);
                     // Each camera keeps its own shape: the doorbell is 4:3, the front door cam 16:9.
-                    int width = dp(PICTURE_HEIGHT_DP) * b.getWidth() / b.getHeight();
-                    if (picture.getLayoutParams().width != width) {
-                        picture.getLayoutParams().width = width;
-                        picture.requestLayout();
+                    float shape = (float) b.getWidth() / b.getHeight();
+                    pictures.get(at).setImageBitmap(b);
+                    if (shapes.get(at) != shape) {
+                        shapes.set(at, shape);
+                        layout();
                     }
-                    picture.setImageBitmap(b);
                 });
             } catch (IOException e) {
-                Log.w(TAG, "doorbell camera unavailable: " + cameras.get(i), e);
+                Log.w(TAG, "doorbell camera unavailable: " + camera, e);
             }
         }
         network.postDelayed(frame, FRAME_MS);
@@ -136,10 +177,9 @@ final class Doorbell {
                     WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
                     PixelFormat.TRANSLUCENT);
-            wp.gravity = Gravity.TOP | Gravity.END;
-            wp.x = dp(28);
-            wp.y = dp(28);
+            enlarged = false;
             context.getSystemService(WindowManager.class).addView(card, wp);
+            layout();
             card.setAlpha(0f);
             card.setTranslationY(-dp(16));
             card.animate().alpha(1f).translationY(0).setDuration(220).start();
@@ -155,6 +195,8 @@ final class Doorbell {
         View gone = card;
         card = null;
         pictures.clear();
+        shapes.clear();
+        enlarged = false;
         gone.animate().alpha(0f).setDuration(180)
                 .withEndAction(() -> context.getSystemService(WindowManager.class).removeView(gone)).start();
     }
@@ -176,8 +218,6 @@ final class Doorbell {
         header.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
         when = SettingsActivity.Ui.text(context, "", 13, SettingsActivity.Ui.REGULAR, 0x99FFFFFF);
         header.addView(when);
-        TextView back = SettingsActivity.Ui.text(context, "  ·  Back to close", 13, SettingsActivity.Ui.REGULAR, 0x66FFFFFF);
-        header.addView(back);
         LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(-1, -2);
         hp.bottomMargin = dp(10);
         box.addView(header, hp);
@@ -195,14 +235,56 @@ final class Doorbell {
                 }
             });
             picture.setClipToOutline(true);
-            // A dark 16:9 placeholder until the first picture says the camera's real shape.
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(PICTURE_HEIGHT_DP * 16 / 9), dp(PICTURE_HEIGHT_DP));
-            if (i > 0) lp.leftMargin = dp(10);
-            row.addView(picture, lp);
+            row.addView(picture, new LinearLayout.LayoutParams(0, 0));
             pictures.add(picture);
+            // 16:9 until the first picture says the camera's real shape.
+            shapes.add(16f / 9);
         }
         box.addView(row);
+        // Under the pictures, so the small card can be as narrow as its cameras.
+        hint = SettingsActivity.Ui.text(context, "", 12, SettingsActivity.Ui.REGULAR, 0x80FFFFFF);
+        hint.setPadding(dp(2), dp(8), 0, 0);
+        box.addView(hint);
         return box;
+    }
+
+    /** Sizes and places the card: every camera small in the corner, or all of them large in the middle. */
+    private void layout() {
+        if (card == null) return;
+        int height = dp(PICTURE_HEIGHT_DP);
+        if (enlarged) {
+            // As tall as the screen's width allows with every camera side by side.
+            float shapesWide = 0;
+            for (float shape : shapes) shapesWide += shape;
+            int screen = context.getResources().getDisplayMetrics().widthPixels;
+            int room = screen - dp(2 * 16 + 2 * 14 + 10 * (pictures.size() - 1));
+            height = Math.min(dp(ENLARGED_MAX_HEIGHT_DP), Math.round(room / shapesWide));
+        }
+        for (int i = 0; i < pictures.size(); i++) {
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) pictures.get(i).getLayoutParams();
+            lp.width = Math.round(height * shapes.get(i));
+            lp.height = height;
+            lp.leftMargin = i > 0 ? dp(10) : 0;
+            pictures.get(i).setLayoutParams(lp);
+        }
+        hint.setText(enlarged ? "OK to shrink  ·  Back to close" : "OK to enlarge  ·  Back to close");
+        WindowManager.LayoutParams wp = (WindowManager.LayoutParams) card.getLayoutParams();
+        wp.gravity = enlarged ? Gravity.CENTER : Gravity.TOP | Gravity.END;
+        wp.x = enlarged ? 0 : dp(28);
+        wp.y = enlarged ? 0 : dp(28);
+        context.getSystemService(WindowManager.class).updateViewLayout(card, wp);
+    }
+
+    /** Decodes a camera picture at about the size it's shown: a 4K frame at full size would be 33 MB. */
+    private static Bitmap decode(byte[] jpeg, int heightPx) {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length, o);
+        int sample = 1;
+        while (o.outHeight / (sample * 2) >= heightPx) sample *= 2;
+        o.inJustDecodeBounds = false;
+        o.inSampleSize = sample;
+        return BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length, o);
     }
 
     private int dp(int v) {

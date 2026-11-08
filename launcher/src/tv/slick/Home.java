@@ -62,7 +62,8 @@ final class Home {
     final List<Device> devices;
     /**
      * The doorbell: its ring sensor (a binary_sensor that turns on at each ring) followed by the cameras
-     * to show when it rings. Empty when the house has none. Only ever read, never controlled.
+     * to show when it rings, each as "small" or "small|large" (a low-resolution stream for the corner card
+     * and a sharp one for the enlarged view). Empty when the house has none. Only ever read, never controlled.
      */
     final List<String> doorbell;
 
@@ -71,8 +72,10 @@ final class Home {
         if (!doorbell.isEmpty() && (!doorbell.get(0).startsWith("binary_sensor.") || doorbell.size() < 2)) {
             throw new IllegalArgumentException("doorbell is a binary_sensor followed by cameras: " + doorbell);
         }
-        for (String camera : doorbell.subList(Math.min(1, doorbell.size()), doorbell.size())) {
-            if (!camera.startsWith("camera.")) throw new IllegalArgumentException("not a camera: " + camera);
+        for (String cameras : doorbell.subList(Math.min(1, doorbell.size()), doorbell.size())) {
+            for (String camera : cameras.split("\\|")) {
+                if (!camera.startsWith("camera.")) throw new IllegalArgumentException("not a camera: " + camera);
+            }
         }
         this.url = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
         this.token = token;
