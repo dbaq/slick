@@ -73,7 +73,10 @@ public class HomeGuard extends AccessibilityService {
         Home home = Home.load(this);
         main.removeCallbacksAndMessages(null);
         if (overlay == null) {
-            panel = new HomePanel(this, home);
+            panel = new HomePanel(this, home, () -> {
+                closePanel();
+                doorbell.showCameras();
+            });
             overlay = new FrameLayout(this);
             int margin = SettingsActivity.Ui.dp(this, 28);
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(SettingsActivity.Ui.dp(this, 400), -1, Gravity.END);

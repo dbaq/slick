@@ -48,6 +48,7 @@ final class Doorbell {
     /** The small card stacks the cameras at this width; their heights follow each camera's shape. */
     private static final int SMALL_WIDTH_DP = 200;
     private static final int ENLARGED_MAX_HEIGHT_DP = 420;
+    static final String CAMERAS = "tv.slick.CAMERAS";
 
     private final Context context;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -57,6 +58,7 @@ final class Doorbell {
     private final Runnable hide = this::hide;
     private boolean ringing;
     private LinearLayout card;
+    private TextView title;
     private TextView when;
     private TextView hint;
     private LinearLayout row;
@@ -81,6 +83,13 @@ final class Doorbell {
                 if (home != null && !home.doorbell.isEmpty()) show(home);
             }
         }, new IntentFilter("tv.slick.RING"), android.Manifest.permission.WRITE_SECURE_SETTINGS, main);
+        // The Home panel's camera tiles (from the home screen; the guard calls showCameras directly).
+        context.registerReceiver(new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent intent) {
+                showCameras();
+            }
+        }, new IntentFilter(CAMERAS), android.Manifest.permission.WRITE_SECURE_SETTINGS, main);
     }
 
     /** The remote while the card is up: OK and Back belong to the card; the rest to the app. */
@@ -117,6 +126,15 @@ final class Doorbell {
         layout();
         network.removeCallbacks(frame);
         network.post(frame);
+    }
+
+    /** Someone knocked instead: the door cameras big, until Back. */
+    void showCameras() {
+        Home home = Home.load(context);
+        if (home == null || home.doorbell.isEmpty()) return;
+        show(home);
+        title.setText("Front door");
+        setEnlarged(true);
     }
 
     // ---- Watching (network thread) -----------------------------------------------------------------
@@ -188,6 +206,7 @@ final class Doorbell {
             network.removeCallbacks(frame);
             network.post(frame);
         }
+        title.setText("Someone's at the door");
         when.setText(DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date()));
     }
 
@@ -216,7 +235,7 @@ final class Doorbell {
         LinearLayout header = new LinearLayout(context);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = SettingsActivity.Ui.text(context, "Someone's at the door", 15, SettingsActivity.Ui.MEDIUM, Color.WHITE);
+        title = SettingsActivity.Ui.text(context, "", 15, SettingsActivity.Ui.MEDIUM, Color.WHITE);
         header.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
         when = SettingsActivity.Ui.text(context, "", 13, SettingsActivity.Ui.REGULAR, 0x99FFFFFF);
         when.setPadding(dp(12), 0, 0, 0);

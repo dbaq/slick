@@ -140,7 +140,10 @@ public class HomeActivity extends Activity {
         root.addView(buildInfo(), frame(480, -2, Gravity.BOTTOM | Gravity.START, 64, 0, 0, 190));
         root.addView(buildDock(), frame(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, 26));
         if (home != null) {
-            panel = new HomePanel(this, home);
+            panel = new HomePanel(this, home, () -> {
+                closePanel();
+                sendBroadcast(new Intent(Doorbell.CAMERAS).setPackage(getPackageName()));
+            });
             root.addView(panel, frame(400, -1, Gravity.END, 0, 28, 28, 28));
         }
 

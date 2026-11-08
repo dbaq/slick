@@ -12,6 +12,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Space;
@@ -66,10 +67,14 @@ final class HomePanel extends FrameLayout {
     /** The OK release that ends a long press must not end the dimming it just started. */
     private boolean swallowNextOkUp;
     private boolean open;
+    /** OK on a camera tile: show the door cameras big (the panel closes first). */
+    private final Runnable onCameras;
+    private final List<ImageView> cameraViews = new ArrayList<>();
 
-    HomePanel(Context activity, Home home) {
+    HomePanel(Context activity, Home home, Runnable onCameras) {
         super(activity);
         this.activity = activity;
+        this.onCameras = onCameras;
         GradientDrawable bg = new GradientDrawable();
         bg.setCornerRadius(dp(24));
         // Opaque: the home screen's own buttons sit right behind the panel's top tiles.
@@ -111,6 +116,7 @@ final class HomePanel extends FrameLayout {
         if (sameTiles) return;
         adjusting = null;
         tiles.clear();
+        cameraViews.clear();
         content.removeAllViews();
         List<Tile> big = new ArrayList<>();
         List<Tile> lights = new ArrayList<>();
@@ -123,6 +129,7 @@ final class HomePanel extends FrameLayout {
         grid(big, 2, 96);
         section("Lights", lights);
         section("Shortcuts", shortcuts);
+        cameras();
         if (open) refresh();
     }
 
@@ -133,6 +140,7 @@ final class HomePanel extends FrameLayout {
         setTranslationX(dp(440));
         animate().translationX(0).setInterpolator(ease).setDuration(260).start();
         if (!tiles.isEmpty()) tiles.get(0).view.requestFocus();
+        else if (!cameraViews.isEmpty()) ((View) cameraViews.get(0).getParent()).requestFocus();
         refresh();
     }
 
@@ -203,6 +211,15 @@ final class HomePanel extends FrameLayout {
                     JSONObject state = h.state(t.device.entityId);
                     main.post(() -> t.apply(state));
                 }
+                List<String> doorCameras = h.doorbell.isEmpty() ? new ArrayList<>() : h.doorbell.subList(1, h.doorbell.size());
+                for (int i = 0; i < doorCameras.size(); i++) {
+                    byte[] jpeg = h.snapshot(doorCameras.get(i).split("\\|")[0]);
+                    android.graphics.Bitmap b = android.graphics.BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
+                    int at = i;
+                    main.post(() -> {
+                        if (at < cameraViews.size()) cameraViews.get(at).setImageBitmap(b);
+                    });
+                }
                 main.post(() -> status.setVisibility(GONE));
             } catch (IOException | JSONException e) {
                 Log.w("Slick", "Home Assistant refresh failed", e);
@@ -248,6 +265,52 @@ final class HomePanel extends FrameLayout {
         grid(group, 3, 90);
     }
 
+    /** The door cameras as live thumbnails: OK on either shows them both big. */
+    private void cameras() {
+        if (home.doorbell.isEmpty()) return;
+        TextView label = text("Cameras", 12, 0x8CFFFFFF);
+        label.setTypeface(SettingsActivity.Ui.MEDIUM);
+        label.setPadding(dp(4), content.getChildCount() == 0 ? 0 : dp(12), 0, dp(8));
+        content.addView(label);
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setClipChildren(false);
+        for (int i = 1; i < home.doorbell.size(); i++) {
+            FrameLayout tile = new FrameLayout(activity);
+            tile.setFocusable(true);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(16));
+            bg.setColor(GLASS);
+            tile.setForeground(bg);
+            tile.setClipToOutline(true);
+            tile.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, android.graphics.Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dp(16));
+                }
+            });
+            ImageView picture = new ImageView(activity);
+            picture.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            picture.setBackgroundColor(0xFF000000);
+            tile.addView(picture, new FrameLayout.LayoutParams(-1, -1));
+            cameraViews.add(picture);
+            tile.setOnFocusChangeListener((v, focused) -> {
+                // The picture stays clear; focus is a white ring and a slight lift, like the other tiles.
+                bg.setColor(Color.TRANSPARENT);
+                bg.setStroke(focused ? dp(3) : 0, Color.WHITE);
+                float scale = focused ? 1.05f : 1f;
+                v.animate().scaleX(scale).scaleY(scale).setInterpolator(ease).setDuration(160).start();
+                v.setTranslationZ(focused ? dp(6) : 0);
+            });
+            bg.setColor(Color.TRANSPARENT);
+            tile.setOnClickListener(v -> onCameras.run());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(100), 1f);
+            if (i > 1) lp.leftMargin = dp(10);
+            row.addView(tile, lp);
+        }
+        content.addView(row, new LinearLayout.LayoutParams(-1, -2));
+    }
+
     private void grid(List<Tile> group, int columns, int heightDp) {
         for (int i = 0; i < group.size(); i += columns) {
             LinearLayout row = new LinearLayout(activity);
@@ -291,7 +354,7 @@ final class HomePanel extends FrameLayout {
     }
 
     private static boolean sameDevices(Home a, Home b) {
-        if (a.devices.size() != b.devices.size()) return false;
+        if (a.devices.size() != b.devices.size() || !a.doorbell.equals(b.doorbell)) return false;
         for (int i = 0; i < a.devices.size(); i++) {
             if (!a.devices.get(i).entityId.equals(b.devices.get(i).entityId)
                     || !a.devices.get(i).name.equals(b.devices.get(i).name)) return false;
