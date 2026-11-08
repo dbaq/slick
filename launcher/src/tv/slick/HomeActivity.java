@@ -635,6 +635,7 @@ public class HomeActivity extends Activity {
         GradientDrawable playBg = new GradientDrawable();
         playBg.setCornerRadius(dp(20));
         playBg.setColor(0x12FFFFFF);
+        playBg.setStroke(dp(1), 0x4DFFFFFF);
         play.setBackground(playBg);
         playLabel = text("", 15, MEDIUM, 0xD9FFFFFF);
         play.addView(playLabel);

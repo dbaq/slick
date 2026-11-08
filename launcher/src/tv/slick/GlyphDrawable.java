@@ -9,12 +9,12 @@ import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 
-/** Line icons for the glass buttons, drawn rather than shipped as assets. */
+/** Icons for the glass buttons and the Home panel, drawn rather than shipped as assets. */
 final class GlyphDrawable extends Drawable {
 
-    enum Kind { SEARCH, WIFI, GEAR, HOUSE, BULB, SPEAKER, FLAME, SPARK }
+    enum Kind { SEARCH, WIFI, GEAR, HOUSE, BULB, SPEAKER, FLAME, SNOW, SPARK }
 
-    private final Kind kind;
+    private Kind kind;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF oval = new RectF();
     private final Path path = new Path();
@@ -35,6 +35,12 @@ final class GlyphDrawable extends Drawable {
 
     void setColor(int color) {
         paint.setColor(color);
+        invalidateSelf();
+    }
+
+    void setKind(Kind kind) {
+        if (this.kind == kind) return;
+        this.kind = kind;
         invalidateSelf();
     }
 
@@ -68,9 +74,21 @@ final class GlyphDrawable extends Drawable {
             path.lineTo(cx + s * 0.26f, cy - s * 0.12f);
             c.drawPath(path, paint);
         } else if (kind == Kind.BULB) {
-            c.drawCircle(cx, cy - s * 0.08f, s * 0.24f, paint);
-            c.drawLine(cx - s * 0.11f, cy + s * 0.25f, cx + s * 0.11f, cy + s * 0.25f, paint);
-            c.drawLine(cx - s * 0.07f, cy + s * 0.37f, cx + s * 0.07f, cy + s * 0.37f, paint);
+            // A solid bulb: round glass narrowing into the neck, then the screw base below a gap.
+            path.reset();
+            path.addCircle(cx, cy - s * 0.1f, s * 0.27f, Path.Direction.CW);
+            tooth.reset();
+            tooth.moveTo(cx - s * 0.2f, cy + s * 0.04f);
+            tooth.lineTo(cx + s * 0.2f, cy + s * 0.04f);
+            tooth.lineTo(cx + s * 0.12f, cy + s * 0.22f);
+            tooth.lineTo(cx - s * 0.12f, cy + s * 0.22f);
+            tooth.close();
+            path.op(tooth, Path.Op.UNION);
+            paint.setStyle(Paint.Style.FILL);
+            c.drawPath(path, paint);
+            oval.set(cx - s * 0.12f, cy + s * 0.27f, cx + s * 0.12f, cy + s * 0.4f);
+            c.drawRoundRect(oval, s * 0.05f, s * 0.05f, paint);
+            paint.setStyle(Paint.Style.STROKE);
         } else if (kind == Kind.SPEAKER) {
             path.reset();
             path.moveTo(cx - s * 0.36f, cy - s * 0.11f);
@@ -88,20 +106,38 @@ final class GlyphDrawable extends Drawable {
                 c.drawArc(oval, -45, 90, false, paint);
             }
         } else if (kind == Kind.FLAME) {
+            // A solid flame leaning a little, with a small tongue on the side.
             path.reset();
-            path.moveTo(cx, cy - s * 0.4f);
-            path.cubicTo(cx + s * 0.34f, cy - s * 0.04f, cx + s * 0.3f, cy + s * 0.38f, cx, cy + s * 0.38f);
-            path.cubicTo(cx - s * 0.3f, cy + s * 0.38f, cx - s * 0.34f, cy - s * 0.04f, cx, cy - s * 0.4f);
+            path.moveTo(cx + s * 0.02f, cy - s * 0.42f);
+            path.cubicTo(cx + s * 0.36f, cy - s * 0.1f, cx + s * 0.32f, cy + s * 0.4f, cx, cy + s * 0.4f);
+            path.cubicTo(cx - s * 0.32f, cy + s * 0.4f, cx - s * 0.34f, cy + s * 0.02f, cx - s * 0.16f, cy - s * 0.14f);
+            path.cubicTo(cx - s * 0.14f, cy - s * 0.02f, cx - s * 0.08f, cy + s * 0.02f, cx - s * 0.04f, cy + s * 0.02f);
+            path.cubicTo(cx - s * 0.08f, cy - s * 0.16f, cx - s * 0.06f, cy - s * 0.3f, cx + s * 0.02f, cy - s * 0.42f);
+            path.close();
+            paint.setStyle(Paint.Style.FILL);
             c.drawPath(path, paint);
-        } else if (kind == Kind.SPARK) {
-            path.reset();
-            float[][] points = {{0, -0.4f}, {0.1f, -0.1f}, {0.4f, 0}, {0.1f, 0.1f}, {0, 0.4f}, {-0.1f, 0.1f}, {-0.4f, 0}, {-0.1f, -0.1f}};
-            for (int i = 0; i < points.length; i++) {
-                float x = cx + s * points[i][0];
-                float y = cy + s * points[i][1];
-                if (i == 0) path.moveTo(x, y);
-                else path.lineTo(x, y);
+            paint.setStyle(Paint.Style.STROKE);
+        } else if (kind == Kind.SNOW) {
+            // Three crossing strokes with small chevrons at each end.
+            for (int i = 0; i < 3; i++) {
+                c.save();
+                c.rotate(60 * i, cx, cy);
+                c.drawLine(cx, cy - s * 0.38f, cx, cy + s * 0.38f, paint);
+                for (int end : new int[] {-1, 1}) {
+                    float y = cy + end * s * 0.26f;
+                    c.drawLine(cx, y, cx - s * 0.09f, y + end * s * 0.1f, paint);
+                    c.drawLine(cx, y, cx + s * 0.09f, y + end * s * 0.1f, paint);
+                }
+                c.restore();
             }
+        } else if (kind == Kind.SPARK) {
+            // A four-point sparkle with curved sides.
+            path.reset();
+            path.moveTo(cx, cy - s * 0.42f);
+            path.quadTo(cx + s * 0.05f, cy - s * 0.05f, cx + s * 0.42f, cy);
+            path.quadTo(cx + s * 0.05f, cy + s * 0.05f, cx, cy + s * 0.42f);
+            path.quadTo(cx - s * 0.05f, cy + s * 0.05f, cx - s * 0.42f, cy);
+            path.quadTo(cx - s * 0.05f, cy - s * 0.05f, cx, cy - s * 0.42f);
             path.close();
             paint.setStyle(Paint.Style.FILL);
             c.drawPath(path, paint);

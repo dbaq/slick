@@ -38,12 +38,20 @@ final class HomePanel extends FrameLayout {
     /** Climate units drop a command that comes within about a second of the last one (measured: 1s drops, 2s works). */
     private static final long CLIMATE_GAP_MS = 2000;
 
-    private static final int OFF_BG = 0x1AFFFFFF;
-    private static final int ON_BG = 0x40FFFFFF;
-    private static final int WARM_LIGHT = 0xFFFCD34D;
-    private static final int HEAT = 0xFFFB923C;
-    private static final int COOL = 0xFF60A5FA;
-    private static final int OTHER_MODE = 0xFF5EEAD4;
+    // Apple Home colors: glass tiles, white when a light is on (or a tile is focused), colored icon badges.
+    private static final int GLASS = 0x1FFFFFFF;
+    private static final int GLASS_FOCUSED = 0x47FFFFFF;
+    private static final int LIT = 0xF2FFFFFF;
+    private static final int INK = 0xFF1C1C1E;
+    private static final int BADGE_OFF = 0x2EFFFFFF;
+    private static final int BADGE_OFF_ON_WHITE = 0x14000000;
+    private static final int YELLOW = 0xFFFFD60A;
+    private static final int YELLOW_INK = 0xFF3A2A00;
+    private static final int BLUE = 0xFF0A84FF;
+    private static final int ORANGE = 0xFFFF9F0A;
+    private static final int CYAN = 0xFF32ADE6;
+    private static final int GREEN = 0xFF30D158;
+    private static final int PURPLE = 0xFFBF5AF2;
 
     private final Activity activity;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -63,8 +71,10 @@ final class HomePanel extends FrameLayout {
         super(activity);
         this.activity = activity;
         GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(dp(16));
-        bg.setColor(0xFF121418);
+        bg.setCornerRadius(dp(24));
+        // Opaque: the home screen's own buttons sit right behind the panel's top tiles.
+        bg.setColor(0xFF1A1B20);
+        bg.setStroke(dp(1), 0x1FFFFFFF);
         setBackground(bg);
         setVisibility(GONE);
 
@@ -72,9 +82,13 @@ final class HomePanel extends FrameLayout {
         column.setOrientation(LinearLayout.VERTICAL);
         content = new LinearLayout(activity);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(14), dp(14), dp(14), dp(14));
+        content.setPadding(dp(16), dp(16), dp(16), dp(16));
+        // Focused tiles grow a little; the padding leaves them room.
+        content.setClipChildren(false);
+        content.setClipToPadding(false);
         ScrollView scroll = new ScrollView(activity);
         scroll.setVerticalScrollBarEnabled(false);
+        scroll.setClipChildren(false);
         scroll.addView(content);
         status = text("", 12, 0xFFFBBF24);
         status.setPadding(dp(16), dp(12), dp(16), 0);
@@ -106,7 +120,7 @@ final class HomePanel extends FrameLayout {
             tiles.add(t);
             (d.kind == Home.Kind.LIGHT ? lights : d.kind == Home.Kind.SCRIPT ? shortcuts : big).add(t);
         }
-        grid(big, 2, 88);
+        grid(big, 2, 96);
         section("Lights", lights);
         section("Shortcuts", shortcuts);
         if (open) refresh();
@@ -228,25 +242,27 @@ final class HomePanel extends FrameLayout {
     private void section(String title, List<Tile> group) {
         if (group.isEmpty()) return;
         TextView label = text(title, 12, 0x8CFFFFFF);
-        label.setPadding(dp(2), content.getChildCount() == 0 ? 0 : dp(10), 0, dp(6));
+        label.setTypeface(SettingsActivity.Ui.MEDIUM);
+        label.setPadding(dp(4), content.getChildCount() == 0 ? 0 : dp(12), 0, dp(8));
         content.addView(label);
-        grid(group, 3, 68);
+        grid(group, 3, 90);
     }
 
     private void grid(List<Tile> group, int columns, int heightDp) {
         for (int i = 0; i < group.size(); i += columns) {
             LinearLayout row = new LinearLayout(activity);
             row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setClipChildren(false);
             // A lone big tile takes the whole row; small tiles keep their size and leave a gap.
             boolean lone = columns == 2 && i + 1 == group.size();
             for (int c = 0; c < (lone ? 1 : columns); c++) {
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(heightDp), 1f);
-                if (c > 0) lp.leftMargin = dp(8);
+                if (c > 0) lp.leftMargin = dp(10);
                 row.addView(i + c < group.size() ? group.get(i + c).view : new Space(activity), lp);
             }
             LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2);
             if (content.getChildCount() > 0 && !(content.getChildAt(content.getChildCount() - 1) instanceof TextView)) {
-                rp.topMargin = dp(8);
+                rp.topMargin = dp(10);
             }
             content.addView(row, rp);
         }
@@ -261,6 +277,17 @@ final class HomePanel extends FrameLayout {
 
     private int dp(int v) {
         return SettingsActivity.Ui.dp(activity, v);
+    }
+
+    /** "Foyer Light Switch" reads "Foyer", "Kitchen Main Lights" reads "Kitchen Main": the tile already says it's a light. */
+    static String shortName(String name) {
+        String n = name.trim();
+        for (String tail : new String[] {" Light Switch", " Lights", " Light", " Switch"}) {
+            if (n.length() > tail.length() && n.toLowerCase().endsWith(tail.toLowerCase())) {
+                return n.substring(0, n.length() - tail.length()).trim();
+            }
+        }
+        return n;
     }
 
     private static boolean sameDevices(Home a, Home b) {
@@ -282,11 +309,16 @@ final class HomePanel extends FrameLayout {
         final Home.Device device;
         final LinearLayout view;
         private final GlyphDrawable glyph;
+        private final GradientDrawable badge = new GradientDrawable();
         private final TextView name;
         private final TextView value;
         private final TextView detail;
         private final GradientDrawable bg = new GradientDrawable();
         private final boolean big;
+        /** Sound only: the volume as a thin bar under the name. */
+        private final GradientDrawable track = new GradientDrawable();
+        private final GradientDrawable fill = new GradientDrawable();
+        private View fillView;
 
         private boolean known;
         private boolean available = true;
@@ -312,26 +344,48 @@ final class HomePanel extends FrameLayout {
             view = new LinearLayout(activity);
             view.setOrientation(LinearLayout.VERTICAL);
             view.setFocusable(true);
-            view.setPadding(dp(12), dp(10), dp(12), dp(10));
-            bg.setCornerRadius(dp(12));
+            view.setPadding(dp(12), dp(12), dp(12), dp(11));
+            bg.setCornerRadius(dp(16));
             view.setBackground(bg);
 
             LinearLayout top = new LinearLayout(activity);
             top.setOrientation(LinearLayout.HORIZONTAL);
             top.setGravity(Gravity.CENTER_VERTICAL);
             glyph = new GlyphDrawable(glyphOf(device.kind));
+            FrameLayout chip = new FrameLayout(activity);
+            badge.setShape(GradientDrawable.OVAL);
+            chip.setBackground(badge);
             View icon = new View(activity);
             icon.setBackground(glyph);
-            top.addView(icon, new LinearLayout.LayoutParams(dp(20), dp(20)));
-            value = text("", big ? 20 : 12, Color.WHITE);
+            chip.addView(icon, new FrameLayout.LayoutParams(dp(16), dp(16), Gravity.CENTER));
+            top.addView(chip, new LinearLayout.LayoutParams(dp(30), dp(30)));
+            value = text("", big ? 20 : 13, Color.WHITE);
+            value.setTypeface(SettingsActivity.Ui.MEDIUM);
             value.setGravity(Gravity.END);
             top.addView(value, new LinearLayout.LayoutParams(0, -2, 1f));
-            view.addView(top, new LinearLayout.LayoutParams(-1, 0, 1f));
+            view.addView(top, new LinearLayout.LayoutParams(-1, -2));
+            // The badge keeps its size; the room left over goes between it and the name.
+            view.addView(new Space(activity), new LinearLayout.LayoutParams(-1, 0, 1f));
 
             name = text("", 13, Color.WHITE);
+            name.setTypeface(SettingsActivity.Ui.MEDIUM);
             view.addView(name);
             detail = text("", 11, 0x99FFFFFF);
-            if (big) view.addView(detail);
+            view.addView(detail);
+            if (device.kind == Home.Kind.SOUND) {
+                FrameLayout bar = new FrameLayout(activity);
+                track.setCornerRadius(dp(2));
+                bar.setBackground(track);
+                fillView = new View(activity);
+                fill.setCornerRadius(dp(2));
+                fillView.setBackground(fill);
+                fillView.setPivotX(0);
+                bar.addView(fillView, new FrameLayout.LayoutParams(-1, -1));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(3));
+                lp.topMargin = dp(6);
+                view.addView(bar, lp);
+                detail.setVisibility(GONE);
+            }
 
             view.setOnFocusChangeListener((v, focused) -> {
                 if (!focused && adjusting == this) {
@@ -510,13 +564,26 @@ final class HomePanel extends FrameLayout {
             boolean focused = view.isFocused();
             boolean adjust = adjusting == this;
             boolean on = isOn();
-            bg.setColor(focused ? Color.WHITE : on ? ON_BG : OFF_BG);
-            int text = focused ? 0xFF111111 : Color.WHITE;
-            name.setText(device.name.isEmpty() ? (friendlyName.isEmpty() ? device.entityId : friendlyName) : device.name);
+            boolean lightOn = device.kind == Home.Kind.LIGHT && on;
+            // White when a light is on, or when the focus is on a tile that isn't a light; a focused light
+            // that's off brightens its glass and gets a white ring instead.
+            boolean white = lightOn || (focused && device.kind != Home.Kind.LIGHT);
+            bg.setColor(white ? LIT : focused ? GLASS_FOCUSED : GLASS);
+            bg.setStroke(focused ? dp(2) : 0, focused && !white ? Color.WHITE : Color.TRANSPARENT);
+            float scale = focused ? 1.05f : 1f;
+            view.animate().scaleX(scale).scaleY(scale).setInterpolator(ease).setDuration(160).start();
+            view.setTranslationZ(focused ? dp(6) : 0);
+            int text = white ? INK : Color.WHITE;
+            name.setText(shortName(device.name.isEmpty() ? (friendlyName.isEmpty() ? device.entityId : friendlyName) : device.name));
             name.setTextColor(text);
             value.setTextColor(text);
-            detail.setTextColor(focused ? 0x99111111 : 0x99FFFFFF);
-            glyph.setColor(iconColor(focused, on));
+            detail.setTextColor(white ? 0x991C1C1E : 0x99FFFFFF);
+            paintBadge(white, on);
+            if (fillView != null) {
+                track.setColor(white ? 0x1F000000 : 0x33FFFFFF);
+                fill.setColor(white ? INK : Color.WHITE);
+                fillView.setScaleX((float) volume);
+            }
             view.setAlpha(known && !available ? 0.45f : 1f);
 
             String v;
@@ -530,14 +597,15 @@ final class HomePanel extends FrameLayout {
                 switch (device.kind) {
                     case SOUND:
                         v = String.valueOf((int) Math.round(volume * 100));
-                        d = adjust ? "‹ ›  volume" : state.equals("playing") ? "Playing" : "Volume";
                         break;
                     case CLIMATE:
                         v = state.equals("off") && !adjust ? "Off" : target + "°";
-                        d = adjust ? "‹ › temperature   ▲▼ " + modeLabel(state) : modeLabel(state) + " · now " + current + "°";
+                        d = adjust ? "‹ › temperature   ▲▼ " + modeLabel(state) : modeLabel(state) + " · " + current + "° now";
                         break;
                     case LIGHT:
-                        v = !on ? "Off" : dimmable ? brightness + "%" : "On";
+                        // The tile's color says on or off; only the brightness needs words.
+                        v = adjust ? brightness + "%" : "";
+                        d = on && dimmable && !adjust ? brightness + "%" : "";
                         break;
                     default:
                         v = flashDone ? "Done" : "";
@@ -546,17 +614,35 @@ final class HomePanel extends FrameLayout {
             }
             value.setText(adjust ? "‹ " + v + " ›" : v);
             detail.setText(d);
+            if (device.kind != Home.Kind.SOUND) detail.setVisibility(d.isEmpty() ? GONE : VISIBLE);
         }
 
-        private int iconColor(boolean focused, boolean on) {
-            if (!on) return focused ? 0xFF1C1C1E : 0x99FFFFFF;
+        /** The round icon badge: colored by what the device is doing, gray when it's off. */
+        private void paintBadge(boolean white, boolean on) {
+            int color;
+            int ink = Color.WHITE;
             switch (device.kind) {
-                case LIGHT: return focused ? 0xFFD97706 : WARM_LIGHT;
+                case LIGHT:
+                    color = on ? YELLOW : 0;
+                    ink = YELLOW_INK;
+                    break;
+                case SOUND:
+                    color = available ? BLUE : 0;
+                    break;
                 case CLIMATE:
-                    if (state.equals("heat")) return focused ? 0xFFEA580C : HEAT;
-                    if (state.equals("cool")) return focused ? 0xFF2563EB : COOL;
-                    return focused ? 0xFF0D9488 : OTHER_MODE;
-                default: return focused ? 0xFF1C1C1E : Color.WHITE;
+                    glyph.setKind(state.equals("cool") ? GlyphDrawable.Kind.SNOW : GlyphDrawable.Kind.FLAME);
+                    color = !on ? 0 : state.equals("heat") ? ORANGE : state.equals("cool") ? CYAN : GREEN;
+                    break;
+                default:
+                    color = flashDone ? GREEN : PURPLE;
+                    break;
+            }
+            if (color == 0) {
+                badge.setColor(white ? BADGE_OFF_ON_WHITE : BADGE_OFF);
+                glyph.setColor(white ? INK : Color.WHITE);
+            } else {
+                badge.setColor(color);
+                glyph.setColor(ink);
             }
         }
     }
