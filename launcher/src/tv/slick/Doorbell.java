@@ -66,6 +66,8 @@ final class Doorbell {
     /** Each camera's width over height, once its first picture has come in. */
     private final List<Float> shapes = new ArrayList<>();
     private boolean enlarged;
+    /** Opened big from the Home panel's camera tiles: there's no small card to go back to, only Back. */
+    private boolean fromPanel;
     /** The press that acted on the card: its release mustn't reach the app either. */
     private int swallowUp = KeyEvent.KEYCODE_UNKNOWN;
 
@@ -109,7 +111,7 @@ final class Doorbell {
                 break;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
-                if (event.getRepeatCount() == 0) setEnlarged(!enlarged);
+                if (event.getRepeatCount() == 0 && !fromPanel) setEnlarged(!enlarged);
                 break;
             default:
                 return false;
@@ -133,6 +135,7 @@ final class Doorbell {
         Home home = Home.load(context);
         if (home == null || home.doorbell.isEmpty()) return;
         show(home);
+        fromPanel = true;
         title.setText("Front door");
         setEnlarged(true);
     }
@@ -206,6 +209,7 @@ final class Doorbell {
             network.removeCallbacks(frame);
             network.post(frame);
         }
+        fromPanel = false;
         title.setText("Someone's at the door");
         when.setText(DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date()));
     }
@@ -290,7 +294,7 @@ final class Doorbell {
             lp.topMargin = !enlarged && i > 0 ? dp(8) : 0;
             pictures.get(i).setLayoutParams(lp);
         }
-        hint.setText(enlarged ? "OK to shrink  ·  Back to close" : "OK to enlarge  ·  Back to close");
+        hint.setText(fromPanel ? "Back to close" : enlarged ? "OK to shrink  ·  Back to close" : "OK to enlarge  ·  Back to close");
         WindowManager.LayoutParams wp = (WindowManager.LayoutParams) card.getLayoutParams();
         wp.gravity = enlarged ? Gravity.CENTER : Gravity.TOP | Gravity.END;
         wp.x = enlarged ? 0 : dp(28);
