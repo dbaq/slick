@@ -10,7 +10,8 @@ import java.util.List;
 /**
  * Receives this TV's Home Assistant setup from a computer (launcher/home-setup.sh). Only the adb shell can
  * send it: the manifest requires WRITE_SECURE_SETTINGS of the sender, which ordinary apps can't hold.
- * Extras: url, token, and devices as "entity_id=Name;entity_id=Name" (Name may be empty).
+ * Extras: url, token, devices as "entity_id=Name;entity_id=Name" (Name may be empty), and optionally
+ * doorbell as "binary_sensor.ring;camera.one;camera.two".
  */
 public class HomeSetup extends BroadcastReceiver {
 
@@ -26,7 +27,10 @@ public class HomeSetup extends BroadcastReceiver {
             int eq = entry.indexOf('=');
             devices.add(eq < 0 ? new Home.Device(entry, "") : new Home.Device(entry.substring(0, eq), entry.substring(eq + 1)));
         }
-        new Home(url, token, devices).save(context);
+        String bell = intent.getStringExtra("doorbell");
+        List<String> doorbell = new ArrayList<>();
+        for (String id : (bell == null ? "" : bell).split(";")) if (!id.isEmpty()) doorbell.add(id);
+        new Home(url, token, devices, doorbell).save(context);
         Log.i("Slick", "Home Assistant set up with " + devices.size() + " devices");
     }
 }

@@ -60,12 +60,24 @@ final class Home {
     final String url;
     private final String token;
     final List<Device> devices;
+    /**
+     * The doorbell: its ring sensor (a binary_sensor that turns on at each ring) followed by the cameras
+     * to show when it rings. Empty when the house has none. Only ever read, never controlled.
+     */
+    final List<String> doorbell;
 
-    Home(String url, String token, List<Device> devices) {
+    Home(String url, String token, List<Device> devices, List<String> doorbell) {
         if (devices.size() > MAX_DEVICES) throw new IllegalArgumentException("At most " + MAX_DEVICES + " devices");
+        if (!doorbell.isEmpty() && (!doorbell.get(0).startsWith("binary_sensor.") || doorbell.size() < 2)) {
+            throw new IllegalArgumentException("doorbell is a binary_sensor followed by cameras: " + doorbell);
+        }
+        for (String camera : doorbell.subList(Math.min(1, doorbell.size()), doorbell.size())) {
+            if (!camera.startsWith("camera.")) throw new IllegalArgumentException("not a camera: " + camera);
+        }
         this.url = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
         this.token = token;
         this.devices = devices;
+        this.doorbell = doorbell;
     }
 
     /** This TV's setup, or null when Home Assistant hasn't been set up on it. */
@@ -79,21 +91,25 @@ final class Home {
             for (int i = 0; i < a.length(); i++) {
                 devices.add(new Device(a.getJSONObject(i).getString("id"), a.getJSONObject(i).getString("name")));
             }
-            return new Home(o.getString("url"), o.getString("token"), devices);
+            List<String> doorbell = new ArrayList<>();
+            JSONArray d = o.optJSONArray("doorbell");
+            for (int i = 0; d != null && i < d.length(); i++) doorbell.add(d.getString(i));
+            return new Home(o.getString("url"), o.getString("token"), devices, doorbell);
         } catch (IOException | JSONException e) {
             throw new IllegalStateException("home.json unreadable", e);
         }
     }
 
     Home withDevices(List<Device> devices) {
-        return new Home(url, token, devices);
+        return new Home(url, token, devices, doorbell);
     }
 
     void save(Context context) {
         try {
             JSONArray a = new JSONArray();
             for (Device d : devices) a.put(new JSONObject().put("id", d.entityId).put("name", d.name));
-            JSONObject o = new JSONObject().put("url", url).put("token", token).put("devices", a);
+            JSONObject o = new JSONObject().put("url", url).put("token", token).put("devices", a)
+                    .put("doorbell", new JSONArray(doorbell));
             File f = new File(context.getFilesDir(), FILE);
             File tmp = new File(f.getPath() + ".part");
             Files.write(tmp.toPath(), o.toString().getBytes("UTF-8"));
@@ -107,6 +123,12 @@ final class Home {
 
     JSONObject state(String entityId) throws IOException, JSONException {
         return new JSONObject(request("GET", "/api/states/" + entityId, null));
+    }
+
+    /** A camera's current picture, as JPEG bytes. */
+    byte[] snapshot(String cameraId) throws IOException {
+        if (!cameraId.startsWith("camera.")) throw new IllegalArgumentException(cameraId);
+        return send("GET", "/api/camera_proxy/" + cameraId, null);
     }
 
     /** Every entity Slick could put on the panel. */
@@ -127,6 +149,10 @@ final class Home {
     }
 
     private String request(String method, String path, String body) throws IOException {
+        return new String(send(method, path, body), "UTF-8");
+    }
+
+    private byte[] send(String method, String path, String body) throws IOException {
         HttpURLConnection c = (HttpURLConnection) new URL(url + path).openConnection();
         c.setConnectTimeout(4000);
         c.setReadTimeout(8000);
@@ -141,7 +167,7 @@ final class Home {
                 }
             }
             if (c.getResponseCode() / 100 != 2) throw new IOException(method + " " + path + " -> HTTP " + c.getResponseCode());
-            return new String(readAll(c), "UTF-8");
+            return readAll(c);
         } finally {
             c.disconnect();
         }
