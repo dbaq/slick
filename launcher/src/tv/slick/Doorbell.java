@@ -45,7 +45,8 @@ final class Doorbell {
     private static final long WATCH_MS = 1000;
     private static final long FRAME_MS = 500;
     private static final long SHOW_MS = 45_000;
-    private static final int PICTURE_HEIGHT_DP = 120;
+    /** The small card stacks the cameras at this width; their heights follow each camera's shape. */
+    private static final int SMALL_WIDTH_DP = 200;
     private static final int ENLARGED_MAX_HEIGHT_DP = 420;
 
     private final Context context;
@@ -58,6 +59,7 @@ final class Doorbell {
     private LinearLayout card;
     private TextView when;
     private TextView hint;
+    private LinearLayout row;
     private final List<ImageView> pictures = new ArrayList<>();
     /** Each camera's width over height, once its first picture has come in. */
     private final List<Float> shapes = new ArrayList<>();
@@ -139,7 +141,7 @@ final class Doorbell {
         if (home == null) return;
         List<String> cameras = home.doorbell.subList(1, home.doorbell.size());
         boolean big = enlarged;
-        int heightPx = dp(big ? ENLARGED_MAX_HEIGHT_DP : PICTURE_HEIGHT_DP);
+        int heightPx = dp(big ? ENLARGED_MAX_HEIGHT_DP : SMALL_WIDTH_DP);
         for (int i = 0; i < cameras.size(); i++) {
             // Enlarged, the sharp stream when the camera has one.
             String[] streams = cameras.get(i).split("\\|");
@@ -217,13 +219,13 @@ final class Doorbell {
         TextView title = SettingsActivity.Ui.text(context, "Someone's at the door", 15, SettingsActivity.Ui.MEDIUM, Color.WHITE);
         header.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
         when = SettingsActivity.Ui.text(context, "", 13, SettingsActivity.Ui.REGULAR, 0x99FFFFFF);
+        when.setPadding(dp(12), 0, 0, 0);
         header.addView(when);
         LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(-1, -2);
         hp.bottomMargin = dp(10);
         box.addView(header, hp);
 
-        LinearLayout row = new LinearLayout(context);
-        row.setOrientation(LinearLayout.HORIZONTAL);
+        row = new LinearLayout(context);
         for (int i = 0; i < cameras; i++) {
             ImageView picture = new ImageView(context);
             picture.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -251,9 +253,10 @@ final class Doorbell {
     /** Sizes and places the card: every camera small in the corner, or all of them large in the middle. */
     private void layout() {
         if (card == null) return;
-        int height = dp(PICTURE_HEIGHT_DP);
+        // Small: stacked in a column at one width. Enlarged: side by side, as tall as the screen's width allows.
+        row.setOrientation(enlarged ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        int height = 0;
         if (enlarged) {
-            // As tall as the screen's width allows with every camera side by side.
             float shapesWide = 0;
             for (float shape : shapes) shapesWide += shape;
             int screen = context.getResources().getDisplayMetrics().widthPixels;
@@ -262,9 +265,10 @@ final class Doorbell {
         }
         for (int i = 0; i < pictures.size(); i++) {
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) pictures.get(i).getLayoutParams();
-            lp.width = Math.round(height * shapes.get(i));
-            lp.height = height;
-            lp.leftMargin = i > 0 ? dp(10) : 0;
+            lp.width = enlarged ? Math.round(height * shapes.get(i)) : dp(SMALL_WIDTH_DP);
+            lp.height = enlarged ? height : Math.round(dp(SMALL_WIDTH_DP) / shapes.get(i));
+            lp.leftMargin = enlarged && i > 0 ? dp(10) : 0;
+            lp.topMargin = !enlarged && i > 0 ? dp(8) : 0;
             pictures.get(i).setLayoutParams(lp);
         }
         hint.setText(enlarged ? "OK to shrink  ·  Back to close" : "OK to enlarge  ·  Back to close");
