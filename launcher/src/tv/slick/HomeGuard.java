@@ -1,6 +1,7 @@
 package tv.slick;
 
 import android.accessibilityservice.AccessibilityService;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.os.Handler;
@@ -20,7 +21,7 @@ import android.widget.FrameLayout;
  */
 public class HomeGuard extends AccessibilityService {
 
-    private static final String AMAZON_HOME = "com.amazon.tv.launcher.ui.HomeActivity_vNext";
+    static final String AMAZON_HOME = "com.amazon.tv.launcher.ui.HomeActivity_vNext";
     /** The panel's slide-out, before its window goes away. */
     private static final long CLOSE_MS = 250;
 
@@ -36,14 +37,14 @@ public class HomeGuard extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         if (doorbell == null) doorbell = new Doorbell(this);
-        goHome();
+        goHome(this);
     }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         if (!AMAZON_HOME.contentEquals(event.getClassName())) return;
-        goHome();
+        goHome(this);
     }
 
     @Override
@@ -106,8 +107,8 @@ public class HomeGuard extends AccessibilityService {
         }, CLOSE_MS);
     }
 
-    private void goHome() {
-        startActivity(new Intent(this, HomeActivity.class)
+    static void goHome(Context context) {
+        context.startActivity(new Intent(context, HomeActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION));
     }
 

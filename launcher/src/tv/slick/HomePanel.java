@@ -211,7 +211,7 @@ final class HomePanel extends FrameLayout {
                     JSONObject state = h.state(t.device.entityId);
                     main.post(() -> t.apply(state));
                 }
-                List<String> doorCameras = h.doorbell.isEmpty() ? new ArrayList<>() : h.doorbell.subList(1, h.doorbell.size());
+                List<String> doorCameras = h.doorbell.isEmpty() || HomeWatcher.NEEDED ? new ArrayList<>() : h.doorbell.subList(1, h.doorbell.size());
                 for (int i = 0; i < doorCameras.size(); i++) {
                     byte[] jpeg = h.snapshot(doorCameras.get(i).split("\\|")[0]);
                     android.graphics.Bitmap b = android.graphics.BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
@@ -267,7 +267,8 @@ final class HomePanel extends FrameLayout {
 
     /** The door cameras as live thumbnails: OK on either shows them both big. */
     private void cameras() {
-        if (home.doorbell.isEmpty()) return;
+        // The big cameras open in HomeGuard's overlay, which Fire OS 6 won't run.
+        if (home.doorbell.isEmpty() || HomeWatcher.NEEDED) return;
         TextView label = text("Cameras", 12, 0x8CFFFFFF);
         label.setTypeface(SettingsActivity.Ui.MEDIUM);
         label.setPadding(dp(4), content.getChildCount() == 0 ? 0 : dp(12), 0, dp(8));

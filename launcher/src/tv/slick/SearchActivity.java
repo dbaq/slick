@@ -144,12 +144,13 @@ public class SearchActivity extends Activity {
         }
         status.setText("Searching…");
         PackageManager pm = getPackageManager();
+        boolean stremio = Titles.launchIntent(pm, Pick.Service.STREMIO.pkg) != null;
         network.execute(() -> {
             try {
                 List<Pick> found = new ArrayList<>();
                 for (Pick p : Tmdb.search(query, audience)) {
                     if (Titles.launchIntent(pm, p.service.pkg) != null) found.add(p);
-                    else if (!p.imdbId.isEmpty()) found.add(p.inStremio());
+                    else if (stremio && !p.imdbId.isEmpty()) found.add(p.inStremio());
                 }
                 main.post(() -> {
                     if (mine == seq) show(query, found);
