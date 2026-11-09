@@ -7,7 +7,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.file.Files;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -142,7 +141,7 @@ final class Trakt {
     // ---- Token ------------------------------------------------------------------------------------
 
     private String accessToken() throws IOException, JSONException {
-        JSONObject t = new JSONObject(new String(Files.readAllBytes(file.toPath()), "UTF-8"));
+        JSONObject t = new JSONObject(TextFile.read(file));
         long expires = t.getLong("created_at") + t.getLong("expires_in");
         if (expires - System.currentTimeMillis() / 1000 > RENEW_BEFORE_S) return t.getString("access_token");
         JSONObject renewed = new JSONObject(post("/oauth/token", new JSONObject()
@@ -155,7 +154,7 @@ final class Trakt {
 
     private void save(JSONObject token) throws IOException {
         File tmp = new File(file.getPath() + ".part");
-        Files.write(tmp.toPath(), token.toString().getBytes("UTF-8"));
+        TextFile.write(tmp, token.toString());
         if (!tmp.renameTo(file)) throw new IOException("rename " + file);
     }
 

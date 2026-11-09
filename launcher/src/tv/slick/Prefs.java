@@ -2,6 +2,7 @@ package tv.slick;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.text.TextUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -30,7 +31,7 @@ final class Prefs {
     }
 
     void setDock(List<String> packages) {
-        p.edit().putString("dock", String.join(",", packages)).apply();
+        p.edit().putString("dock", TextUtils.join(",", packages)).apply();
     }
 
     /** Christmas and Halloween picks in their season (see {@link Season}). */

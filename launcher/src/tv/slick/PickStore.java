@@ -10,7 +10,6 @@ import android.util.LruCache;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -180,7 +179,7 @@ final class PickStore {
     private static List<Pick> readList(File listFile) {
         if (listFile == null || !listFile.exists()) return Collections.emptyList();
         try {
-            JSONArray a = new JSONArray(new String(Files.readAllBytes(listFile.toPath()), "UTF-8"));
+            JSONArray a = new JSONArray(TextFile.read(listFile));
             List<Pick> picks = new ArrayList<>();
             for (int i = 0; i < a.length(); i++) picks.add(Pick.fromJson(a.getJSONObject(i)));
             return picks;
@@ -194,7 +193,7 @@ final class PickStore {
         JSONArray a = new JSONArray();
         for (Pick p : picks) a.put(p.toJson());
         File tmp = new File(listFile.getPath() + ".part");
-        Files.write(tmp.toPath(), a.toString().getBytes("UTF-8"));
+        TextFile.write(tmp, a.toString());
         if (!tmp.renameTo(listFile)) throw new IOException("rename " + listFile);
     }
 }

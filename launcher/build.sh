@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 BT="$SDK/build-tools/36.0.0"
-JAR="$SDK/platforms/android-34/android.jar"
+JAR="$SDK/platforms/android-25/android.jar"
 OUT=build
 
 rm -rf "$OUT"
@@ -31,12 +31,12 @@ JAVA
 
 "$BT/aapt2" compile --dir res -o "$OUT/res.zip"
 "$BT/aapt2" link -I "$JAR" --manifest AndroidManifest.xml \
-  --min-sdk-version 28 --target-sdk-version 30 --version-code 1 --version-name 1.0 \
+  --min-sdk-version 25 --target-sdk-version 30 --version-code 1 --version-name 1.0 \
   --java "$OUT/gen" -o "$OUT/unsigned.apk" "$OUT/res.zip"
 
 javac -source 8 -target 8 -bootclasspath "$JAR:$BT/core-lambda-stubs.jar" -Xlint:-options -d "$OUT/classes" \
   $(find src "$OUT/gen" -name '*.java')
-"$BT/d8" --min-api 28 --lib "$JAR" --output "$OUT/dex" $(find "$OUT/classes" -name '*.class')
+"$BT/d8" --min-api 25 --lib "$JAR" --output "$OUT/dex" $(find "$OUT/classes" -name '*.class')
 
 (cd "$OUT/dex" && zip -q ../unsigned.apk classes.dex)
 "$BT/zipalign" -f 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"

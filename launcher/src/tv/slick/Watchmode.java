@@ -2,7 +2,6 @@ package tv.slick;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -38,7 +37,7 @@ final class Watchmode {
     Watchmode(File filesDir) throws IOException, JSONException {
         linksFile = new File(filesDir, "links.json");
         releasesFile = new File(filesDir, "releases.json");
-        links = linksFile.exists() ? new JSONObject(read(linksFile)) : new JSONObject();
+        links = linksFile.exists() ? new JSONObject(TextFile.read(linksFile)) : new JSONObject();
     }
 
     /** "" when Watchmode doesn't know the title on that service: the pick then opens the app. */
@@ -47,7 +46,7 @@ final class Watchmode {
         if (links.has(key)) return links.getString(key);
         String link = lookup(p);
         links.put(key, link);
-        Files.write(linksFile.toPath(), links.toString().getBytes("UTF-8"));
+        TextFile.write(linksFile, links.toString());
         return link;
     }
 
@@ -70,7 +69,7 @@ final class Watchmode {
         if (releases != null) return releases;
         String today = day(System.currentTimeMillis());
         if (releasesFile.exists()) {
-            JSONObject cached = new JSONObject(read(releasesFile));
+            JSONObject cached = new JSONObject(TextFile.read(releasesFile));
             if (cached.getString("day").equals(today)) return releases = cached.getJSONArray("rows");
         }
         JSONArray rows = new JSONArray();
@@ -87,8 +86,7 @@ final class Watchmode {
                 rows.put(new JSONObject().put("source", r.getString("source_name")).put("candidate", type + ":" + id));
             }
         }
-        Files.write(releasesFile.toPath(), new JSONObject().put("day", today).put("rows", rows).toString()
-                .getBytes("UTF-8"));
+        TextFile.write(releasesFile, new JSONObject().put("day", today).put("rows", rows).toString());
         return releases = rows;
     }
 
@@ -118,10 +116,6 @@ final class Watchmode {
 
     private static String day(long ms) {
         return new SimpleDateFormat("yyyyMMdd", Locale.US).format(new Date(ms));
-    }
-
-    private static String read(File f) throws IOException {
-        return new String(Files.readAllBytes(f.toPath()), "UTF-8");
     }
 
     private static JSONObject get(String path) throws IOException, JSONException {

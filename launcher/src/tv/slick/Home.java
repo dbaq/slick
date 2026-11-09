@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import org.json.JSONArray;
@@ -88,7 +87,7 @@ final class Home {
         File f = new File(context.getFilesDir(), FILE);
         if (!f.exists()) return null;
         try {
-            JSONObject o = new JSONObject(new String(Files.readAllBytes(f.toPath()), "UTF-8"));
+            JSONObject o = new JSONObject(TextFile.read(f));
             JSONArray a = o.getJSONArray("devices");
             List<Device> devices = new ArrayList<>();
             for (int i = 0; i < a.length(); i++) {
@@ -115,7 +114,7 @@ final class Home {
                     .put("doorbell", new JSONArray(doorbell));
             File f = new File(context.getFilesDir(), FILE);
             File tmp = new File(f.getPath() + ".part");
-            Files.write(tmp.toPath(), o.toString().getBytes("UTF-8"));
+            TextFile.write(tmp, o.toString());
             if (!tmp.renameTo(f)) throw new IOException("rename " + f);
         } catch (IOException | JSONException e) {
             throw new IllegalStateException("home.json not saved", e);
