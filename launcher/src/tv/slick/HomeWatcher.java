@@ -13,19 +13,27 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.Process;
+import android.provider.Settings;
+import android.view.KeyEvent;
+import android.view.View;
+import android.view.WindowManager;
 
 /**
  * Fire OS 6 (Android 7.1) won't start third-party accessibility services, so {@link HomeGuard} never runs
  * there. On those TVs this watches which screen comes to the front instead, and sends the Amazon home
  * screen back to Slick. It only sees screens, not remote presses: no ☰ drawer or doorbell card there.
- * Needs usage access, granted once over adb.
+ * Android 7.1 holds app starts for 5 seconds after Home, so until Slick is back a black cover hides the
+ * Amazon home screen and takes the remote's presses. Needs usage access and drawing over other apps,
+ * each granted once over adb.
  */
 public class HomeWatcher extends Service {
 
     /** The TVs HomeGuard can't run on. */
     static final boolean NEEDED = Build.VERSION.SDK_INT == Build.VERSION_CODES.N_MR1;
 
-    private static final long POLL_MS = 500;
+    private static final long POLL_MS = 250;
+    /** The cover never stays longer than this, whatever happens to Slick's start. */
+    private static final long COVER_MAX_MS = 8000;
     /** Events can land a little after their time stamp; each look overlaps the last by this much. */
     private static final long OVERLAP_MS = 10_000;
     /** The first look reaches back this far, for the Amazon home screen already up when Slick starts. */
@@ -33,6 +41,8 @@ public class HomeWatcher extends Service {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Runnable tick = this::tick;
+    private final Runnable uncover = this::uncover;
+    private View cover;
     private UsageStatsManager usage;
     private PowerManager power;
     private long lookFrom;
@@ -46,6 +56,11 @@ public class HomeWatcher extends Service {
             throw new IllegalStateException("Grant it once: adb shell appops set "
                     + context.getPackageName() + " GET_USAGE_STATS allow");
         }
+        if (!Settings.canDrawOverlays(context)) {
+            throw new IllegalStateException("Grant it once: adb shell appops set "
+                    + context.getPackageName() + " SYSTEM_ALERT_WINDOW allow");
+        }
+        // Also how Slick's home screen says it's back (HomeActivity.onResume): see onStartCommand.
         context.startService(new Intent(context, HomeWatcher.class));
     }
 
@@ -65,6 +80,7 @@ public class HomeWatcher extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        uncover();
         return START_STICKY;
     }
 
@@ -88,12 +104,42 @@ public class HomeWatcher extends Service {
         }
         if (!HomeGuard.AMAZON_HOME.equals(front) || at <= handled) return;
         handled = at;
+        cover();
         HomeGuard.goHome(this);
+    }
+
+    private void cover() {
+        if (cover == null) {
+            cover = new View(this) {
+                @Override
+                public boolean dispatchKeyEvent(KeyEvent event) {
+                    return true;
+                }
+            };
+            cover.setBackgroundColor(0xFF000000);
+            cover.setFocusable(true);
+            WindowManager.LayoutParams wp = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.TYPE_PHONE,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                    android.graphics.PixelFormat.OPAQUE);
+            getSystemService(WindowManager.class).addView(cover, wp);
+        }
+        main.removeCallbacks(uncover);
+        main.postDelayed(uncover, COVER_MAX_MS);
+    }
+
+    private void uncover() {
+        main.removeCallbacks(uncover);
+        if (cover == null) return;
+        getSystemService(WindowManager.class).removeView(cover);
+        cover = null;
     }
 
     @Override
     public void onDestroy() {
         main.removeCallbacks(tick);
+        uncover();
     }
 
     @Override
